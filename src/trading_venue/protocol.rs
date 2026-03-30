@@ -13,16 +13,13 @@ use std::fmt::Display;
 /// variants (or add their own) so the router and UI can correctly identify and
 /// categorize the venue.
 ///
-/// `YourPoolProtocol` is provided as a template for new integrators.
-///
 /// Protocols included here:
-/// - `YourPoolProtocol`: Example/custom protocol placeholder.
+/// - `DrFraudsworth`: Dr. Fraudsworth taxed AMM + fixed-rate vault protocol.
 /// - `RaydiumAMM`: Raydium’s constant-product AMM on Solana.
 #[derive(Debug, Copy, Clone)]
 pub enum PoolProtocol {
-    /// Example/custom protocol — integrators should rename or replace this
-    /// with their own protocol name.
-    YourPoolProtocol,
+    /// Dr. Fraudsworth DeFi protocol — taxed AMM pools + fixed-rate conversion vaults.
+    DrFraudsworth,
 
     /// Raydium’s AMM (x*y=k) pools on Solana.
     RaydiumAMM,
@@ -44,7 +41,7 @@ impl From<PoolProtocol> for String {
     /// exposes protocol metadata via API.
     fn from(protocol: PoolProtocol) -> Self {
         match protocol {
-            PoolProtocol::YourPoolProtocol => "YourPoolProtocol".to_string(),
+            PoolProtocol::DrFraudsworth => "DrFraudsworth".to_string(),
             PoolProtocol::RaydiumAMM => "RaydiumAMM".to_string(),
         }
     }

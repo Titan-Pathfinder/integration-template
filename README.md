@@ -1,148 +1,132 @@
-# Titan AMM Integration Template
+# Dr. Fraudsworth — Titan Pathfinder Adapter
 
-A reference implementation and test suite for integrating AMMs, CLMMs, and proprietary liquidity engines with Titan’s unified routing layer.
+Titan [`TradingVenue`](https://github.com/Titan-Pathfinder/integration-template) implementation for the [Dr. Fraudsworth](https://github.com/MetalLegBob/drfraudsworth) DeFi protocol on Solana.
 
 ## Overview
 
-Titan aggregates liquidity from heterogeneous venues (AMMs, CLMMs, orderbooks, proprietary pools) under a single unified quoting and routing interface.
+This crate enables [Titan's Argos routing engine](https://www.titan.com/) to quote and route swaps through Dr. Fraudsworth's on-chain programs. It exposes **6 venue instances** covering **8 swap directions**:
 
-This repository provides:
+| Venue | Type | Direction | Accounts |
+|-------|------|-----------|----------|
+| CRIME/SOL Pool | `SolPoolVenue` | SOL <-> CRIME (bidirectional) | 24 buy / 25 sell |
+| FRAUD/SOL Pool | `SolPoolVenue` | SOL <-> FRAUD (bidirectional) | 24 buy / 25 sell |
+| CRIME -> PROFIT | `VaultVenue` | Unidirectional (100:1 rate) | 17 |
+| FRAUD -> PROFIT | `VaultVenue` | Unidirectional (100:1 rate) | 17 |
+| PROFIT -> CRIME | `VaultVenue` | Unidirectional (1:100 rate) | 17 |
+| PROFIT -> FRAUD | `VaultVenue` | Unidirectional (1:100 rate) | 17 |
 
-- A standard trait interface (TradingVenue) every venue must implement
-- A robust boundary-search engine for computing safe swap-size ranges
-- Token metadata utilities, including Token-2022 support
-- A caching abstraction for efficient on-chain account loading
-- Simulation tests using LiteSVM ensuring off-chain quotes match on-chain execution
-- A fully worked Raydium example implementation
+## Architecture
 
-This template is the starting point for integrating your AMM into Titan.
-
-## Core Components
-#### 1. TradingVenue trait
-
-This is the heart of integration. Your AMM implements:
-```r
-initialized()
-
-from_account()
-
-update_state()
-
-get_token_info()
-
-quote()
-
-generate_swap_instruction()
 ```
-Titan handles:
-
-- Boundaries: `bounds()`
-- Swap direction checks
--  Token metadata accessors
-
-Assuming that your AMM admits a simplified method for finding
-boundaries, you may provide this.
-
-#### 2. QuoteRequest and QuoteResult
-
-All quotes use raw atom units — no decimals.
-
-#### 3. Boundary search
-
-The module bounds.rs provides a robust search algorithm that:
-
-- Discovers the maximal safe input range
-- Applies exponential search + binary refinement
-- Venues only need to implement a zero-input-safe quote().
-
-#### 4. Token metadata (TokenInfo)
-
-Supports:
-- SPL Token
-- Token-2022
-- Transfer fee extensions
-
-Do not include transfer fee handling in your quoting logic.
-
-#### 5. AccountsCache
-
-Used by venues to load their required on-chain accounts efficiently.
-Includes an RPC-backed implementation with caching.
-
-## Included Tests
-
-This template ships with two categories of tests that every venue must pass:
-
-#### 1. Construction & Boundary Tests
-
-File: tests/test_construction.rs
-
-This verifies that your venue correctly:
-
-- Deserializes accounts
-- Loads required state
-- Produces valid token info
-- Provides working quotes at both boundaries
-- Does not allocate heap memory in quoting logic---quoting must be real-time
-
-#### 2. Simulation Tests (Critical)
-
-File: tests/simulations.rs
-
-Uses LiteSVM to execute real swaps on your pool program.
-
-It verifies:
-
-- The off-chain quote() matches on-chain execution at boundaries
-- Random log-uniform samples also match simulated execution
-- ATA creation, token ownership, and instruction accounts are correct
-- These tests ensure your AMM is safe for Titan’s routing engine.
-
-## Implementing Your Own Venue
-
-To integrate your pool:
-
-Create a new struct
-```r
-pub struct MyCustomAmmVenue { ... }
+User swap request
+  -> Titan Argos router
+    -> TradingVenue::quote()        # Off-chain: pure integer math, < 100us
+    -> TradingVenue::generate_swap_instruction()
+      -> Tax Program (on-chain)     # Deducts tax, distributes to staking/carnage/treasury
+        -> AMM Program (CPI)        # Constant-product swap
+          -> Token-2022 (CPI)       # Token transfer
+            -> Transfer Hook (CPI)  # Whitelist enforcement
 ```
 
-Implement:
-```r
-impl FromAccount for MyCustomAmmVenue { ... }
-impl TradingVenue for MyCustomAmmVenue { ... }
+Swaps go through the **Tax Program** (not the AMM directly). The Tax Program deducts a dynamic tax based on the current epoch, then CPI-calls the AMM for the actual swap.
+
+### SOL Pool Quote Flow
+
+**Buy (SOL -> token):**
+1. Tax deducted from SOL input (epoch-dependent, 3-14%)
+2. LP fee deducted (1%)
+3. Constant-product swap on post-fee amount
+
+**Sell (token -> SOL):**
+1. LP fee deducted from token input (1%)
+2. Constant-product swap
+3. Tax deducted from SOL output (epoch-dependent, 3-14%)
+
+### Vault Conversions
+
+Fixed 100:1 rate between faction tokens (CRIME/FRAUD) and the yield token (PROFIT). Zero fees, deterministic output.
+
+## Token Details
+
+| Token | Mint | Decimals | Program | Transfer Fee |
+|-------|------|----------|---------|-------------|
+| SOL | `So111...112` | 9 | SPL Token | None |
+| CRIME | `cRiME...PXc` | 6 | Token-2022 | None (uses Transfer Hook) |
+| FRAUD | `FraUd...au5` | 6 | Token-2022 | None (uses Transfer Hook) |
+| PROFIT | `pRoFi...fR` | 6 | Token-2022 | None (uses Transfer Hook) |
+
+All three protocol tokens use Token-2022 with the **Transfer Hook** extension for whitelist enforcement. They do **not** use the Transfer Fee extension — `TokenInfo.transfer_fee` is `None` for all mints.
+
+## Protocol-Specific Notes
+
+### Minimum Output Floor
+
+The Tax Program enforces `MINIMUM_OUTPUT_FLOOR_BPS = 5000` — the `minimum_output` parameter must be at least 50% of the on-chain computed expected output. Passing `minimum_output = 0` will be rejected.
+
+The adapter sets `minimum_output = quoted_output / 2` by default. Titan may adjust this in their routing wrapper.
+
+### Address Lookup Table
+
+A protocol-wide ALT (`7dy5NNvacB8YkZrc3c96vDMDtacXzxVpdPLiC4B7LJ4h`) is provided via `AddressLookupTableTrait`. The sell path requires 25 accounts, so v0 transactions with ALT compression are recommended.
+
+### Dynamic Tax Rates
+
+Tax rates change every epoch (~30 minutes on mainnet). The adapter reads `EpochState` during `update_state()` to get current rates. Titan should call `update_state()` at least once per epoch for accurate quotes.
+
+## Usage
+
+```rust
+use drfraudsworth_titan_adapter::vault_venue::{known_sol_pool_venues, known_vault_venues};
+
+// Get all 6 venue instances
+let sol_pools = known_sol_pool_venues();  // 2 venues (uninitialized)
+let vaults = known_vault_venues();        // 4 venues (uninitialized)
+
+// Initialize from on-chain state
+for venue in &mut sol_pools {
+    venue.update_state(&cache).await?;
+}
+for venue in &mut vaults {
+    venue.update_state(&cache).await?;
+}
+
+// Quote a swap
+let result = sol_pools[0].quote(QuoteRequest {
+    input_mint: NATIVE_MINT,
+    output_mint: CRIME_MINT,
+    amount: 1_000_000_000, // 1 SOL
+    swap_type: SwapType::ExactIn,
+})?;
+println!("Expected output: {} CRIME", result.expected_output);
 ```
 
-Required methods:
-```r
-from_account()
-# Load initial pool metadata (e.g., tick array addresses, vaults, invariant configs)
+## Test Suite
 
-update_state()
-# Fetch required accounts via AccountsCache and deserialize live state
-# (tick arrays, vault balances, etc.)
+171 tests covering construction, quoting parity, edge cases, mainnet RPC validation, and speed benchmarks:
 
-get_token_info()
-# Return token mints + decimals + token programs
-
-quote()
-# Perform off-chain math for your AMM and return QuoteResult
-
-generate_swap_instruction()
-# Construct your on-chain program's swap IX for a user
-```
-Run the included tests and ensure they pass:
 ```bash
-cargo test -- --nocapture
+cargo test
 ```
 
-If your venue passes the tests, your quote() logic is sufficient
-to be assessed by our team and go through the next stages of
-integration.
+| Category | Tests | Description |
+|----------|-------|-------------|
+| Unit tests | 65 | Math, state parsing, account builders, instruction data |
+| Construction | 36 | Mock cache, FromAccount, bounds, zero-input, ExactOut |
+| Edge gauntlet | 26 | Adversarial inputs (0, 1, u64::MAX, wrong mints) |
+| Mainnet validation | 13 | Real mainnet account data, live pool/epoch state |
+| Quoting parity | 31 | 300 random samples zero-delta, monotonicity, speed |
 
-## Tips for Integrators
-1. Always support zero-input quoting
-2. Keep your deserialization strictly defensive, never panic
-3. Don’t perform I/O, allocate heap memory, or panic inside quote()
-4. It should take significantly less than 0.1ms to quote your venue
-5. Make sure your instruction accounts match the program’s expectations
+## Programs
+
+| Program | Address | Role |
+|---------|---------|------|
+| Tax Program | `43fZGRtmEsP7ExnJE1dbTbNjaP1ncvVmMPusSeksWGEj` | Swap entry point (deducts tax, CPIs to AMM) |
+| AMM | `5JsSAL3kJDUWD4ZveYXYZmgm1eVqueesTZVdAvtZg8cR` | Constant-product swap execution |
+| Conversion Vault | `5uawA6ehYTu69Ggvm3LSK84qFawPKxbWgfngwj15NRJ` | Fixed-rate token conversion |
+| Transfer Hook | `CiQPQrmQh6BPhb9k7dFnsEs5gKPgdrvNKFc5xie5xVGd` | Whitelist enforcement on T22 transfers |
+| Epoch Program | `4Heqc8QEjJCspHR8y96wgZBnBfbe3Qb8N6JBZMQt9iw2` | Tax rate management |
+| Staking | `12b3t1cNiAUoYLiWFEnFa4w6qYxVAiqCWU7KZuzLPYtH` | Yield distribution |
+
+## License
+
+MIT
