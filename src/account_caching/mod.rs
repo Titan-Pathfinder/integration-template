@@ -62,6 +62,7 @@ pub trait AccountsCache: Send + Sync {
 /// - RPC client errors
 /// - Concurrency/locking problems
 /// - Crossbeam channel errors (for caches using multi-threaded pipelines)
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum AccountCacheError {
     /// RPC client failed to fetch account data.

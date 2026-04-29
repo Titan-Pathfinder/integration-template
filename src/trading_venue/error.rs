@@ -111,6 +111,7 @@ impl Display for ErrorInfo {
 /// **Infrastructure issues**  
 /// - `CacheUnlockFailed`  
 /// - `AccountCacheError` (converted via `#[from]`)
+#[allow(clippy::large_enum_variant)]
 #[derive(Error, Debug)]
 pub enum TradingVenueError {
     /// No account exists in the RPC or cache for the given pubkey.

@@ -14,7 +14,6 @@ pub mod error;
 pub mod protocol;
 pub mod token_info;
 
-use assert_no_alloc::assert_no_alloc;
 use async_trait::async_trait;
 use solana_account::Account;
 use solana_instruction::Instruction;
@@ -31,11 +30,10 @@ use crate::{
 /// Describes which type of swap the user is performing.
 ///
 /// * `ExactIn`  — The user specifies exactly how many input atoms they want
-///                to spend, and the venue returns a quote for the resulting
-///                output amount.
+///   to spend, and the venue returns a quote for the resulting output amount.
+///
 /// * `ExactOut` — The user specifies exactly how many output atoms they want
-///                to receive, and the venue determines how many input atoms
-///                are required.
+///   to receive, and the venue determines how many input atoms are required.
 ///
 /// **Warning:** Titan currently only supports `ExactIn`. Implementers *must*
 /// support `ExactIn`, and may optionally support `ExactOut` for future use.

@@ -1,7 +1,7 @@
 use num_traits::CheckedDiv;
 use uint::construct_uint;
 
-use crate::{ trading_venue::error::TradingVenueError};
+use crate::trading_venue::error::TradingVenueError;
 
 use super::{error::AmmError, state::AmmInfo};
 

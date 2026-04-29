@@ -58,13 +58,14 @@ mod simulations {
     ///
     /// Integrators should update the programs loaded here for their own tests.
     pub fn setup_litesvm() -> (LiteSVM, Keypair) {
-        let mut litesvm = LiteSVM::new().with_compute_budget(ComputeBudget {
-            compute_unit_limit: 1_400_000,
-            ..Default::default()
-        })
-        .with_blockhash_check(false)
-        .with_sigverify(false)
-        .with_transaction_history(0);
+        let mut litesvm = LiteSVM::new()
+            .with_compute_budget(ComputeBudget {
+                compute_unit_limit: 1_400_000,
+                ..Default::default()
+            })
+            .with_blockhash_check(false)
+            .with_sigverify(false)
+            .with_transaction_history(0);
 
         // These two programs appear to be dependencies required by Raydium
         // CLMM math or helper operations.
@@ -195,7 +196,12 @@ mod simulations {
         //
         // Read output account and extract the final token amount
         //
-        let account_b = simulation_result.post_accounts.into_iter().find(|(pk, _)| pk == &token_account_b).map(|(_, acc)| acc).unwrap();
+        let account_b = simulation_result
+            .post_accounts
+            .into_iter()
+            .find(|(pk, _)| pk == &token_account_b)
+            .map(|(_, acc)| acc)
+            .unwrap();
         let post_b = TokenAccount::unpack_from_slice(account_b.data())
             .expect("Failed to unpack token B account");
         post_b.amount
