@@ -33,7 +33,7 @@ impl Display for PoolProtocol {
     ///
     /// Delegates to the `From<PoolProtocol> for String` implementation.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", String::from(*self))
     }
 }
 
