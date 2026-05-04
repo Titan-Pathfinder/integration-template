@@ -95,7 +95,7 @@ impl AccountsCache for RpcClientCache {
             .rpc_client
             .get_account(pubkey)
             .await
-            .map_err(|e| AccountCacheError::FailedToFetchAccount(e))?;
+            .map_err(AccountCacheError::FailedToFetchAccount)?;
 
         // Cache positive lookup
         self.cache.insert(*pubkey, Some(response.clone()));
@@ -139,7 +139,7 @@ impl AccountsCache for RpcClientCache {
                 .rpc_client
                 .get_multiple_accounts(&keys)
                 .await
-                .map_err(|e| AccountCacheError::FailedToFetchAccount(e))?;
+                .map_err(AccountCacheError::FailedToFetchAccount)?;
 
             // Update map and cache
             for (pubkey, account) in keys.iter().zip(response.iter()) {

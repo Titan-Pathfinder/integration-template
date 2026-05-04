@@ -10,6 +10,7 @@
 //!    Finds rough intervals where quoting transitions from:
 //!       - INVALID → VALID  (lower boundary)
 //!       - VALID   → INVALID (upper boundary)
+//!
 //!    using exponential stepping with overflow protection.
 //!
 //! 2. **Binary refinement** (`refine_lower`, `refine_upper`)  
@@ -21,8 +22,6 @@
 //! - `expected_output > 0`
 //!
 //! This module is protocol-agnostic and works for any Titan-integrated AMM.
-
-use std::u64;
 
 use crate::trading_venue::{QuoteResult, error::TradingVenueError};
 
@@ -141,12 +140,10 @@ pub fn refine_lower(
     let low_quote = f(low);
     let high_quote = f(high);
 
-    if let Ok(ref result) = low_quote {
-        if valid_quote(result) {
-            log::error!(
-                "The lower low quotes successfully; this contradicts the search invariant."
-            );
-        }
+    if let Ok(ref result) = low_quote
+        && valid_quote(result)
+    {
+        log::error!("The lower low quotes successfully; this contradicts the search invariant.");
     }
 
     match high_quote {
@@ -219,10 +216,11 @@ pub fn refine_upper(
         }
     }
 
-    if let Ok(ref result) = high_quote {
-        if valid_quote(result) && high != u64::MAX {
-            log::error!("The upper high is valid; this contradicts the expected invalid boundary.");
-        }
+    if let Ok(ref result) = high_quote
+        && valid_quote(result)
+        && high != u64::MAX
+    {
+        log::error!("The upper high is valid; this contradicts the expected invalid boundary.");
     }
 
     // Binary search

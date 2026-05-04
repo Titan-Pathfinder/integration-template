@@ -159,6 +159,7 @@ fn min_amount_with_slippage(input_amount: u64, slippage_bps: u64) -> u64 {
     u64::try_from(dividend.wrapping_div(TEN_THOUSAND_U128)).unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn swap_with_slippage(
     pc_amount: u64,
     coin_amount: u64,
@@ -171,14 +172,10 @@ pub fn swap_with_slippage(
     swap_base_in: bool,
     slippage_bps: u64,
 ) -> Result<u64, TradingVenueError> {
-    if swap_direction == SwapDirection::PC2Coin
-        && (pc_amount).checked_add(amount_specified).is_none()
-    {
-        return Err(TradingVenueError::MathError(
-            "Amount exceeds possible threshold".into(),
-        ));
-    } else if swap_direction == SwapDirection::Coin2PC
-        && (coin_amount).checked_add(amount_specified).is_none()
+    if (swap_direction == SwapDirection::PC2Coin
+        && (pc_amount).checked_add(amount_specified).is_none())
+        || (swap_direction == SwapDirection::Coin2PC
+            && (coin_amount).checked_add(amount_specified).is_none())
     {
         return Err(TradingVenueError::MathError(
             "Amount exceeds possible threshold".into(),
@@ -255,7 +252,8 @@ pub fn swap_exact_amount(
             coin_vault_amount.into(),
             swap_direction,
         );
-        let swap_in_after_add_fee = swap_in_before_add_fee
+        // swap_in_after_add_fee
+        swap_in_before_add_fee
             .checked_mul(swap_fee_denominator.into())
             .ok_or(TradingVenueError::MathError(
                 "swap_in_after_add_fee checked math error".into(),
@@ -270,14 +268,13 @@ pub fn swap_exact_amount(
                 "swap_in_after_add_fee checked math error".into(),
             ))?
             .0
-            .as_u64();
-
-        swap_in_after_add_fee
+            .as_u64()
     };
 
     Ok(other_amount_threshold)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn swap_v2(
     amm_program: &Pubkey,
     amm_keys: &AmmKeys,
