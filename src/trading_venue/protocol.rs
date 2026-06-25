@@ -18,7 +18,7 @@ use std::fmt::Display;
 /// Protocols included here:
 /// - `YourPoolProtocol`: Example/custom protocol placeholder.
 /// - `RaydiumAMM`: Raydium’s constant-product AMM on Solana.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PoolProtocol {
     /// Example/custom protocol — integrators should rename or replace this
     /// with their own protocol name.

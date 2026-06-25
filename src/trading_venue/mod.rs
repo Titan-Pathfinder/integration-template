@@ -6,13 +6,14 @@
 //!
 //! Implementers are responsible for correctly handling state updates,
 //! account deserialization, quoting semantics, and swap instruction
-//! generation. Titan aggregates venues based on these traits after some
-//! proprietary modifications to the logic provided by integrating partners.
+//! generation. This template captures the information Titan needs to add
+//! support for a venue.
 
 pub mod bounds;
 pub mod error;
 pub mod protocol;
 pub mod token_info;
+pub mod venue_creation;
 
 use async_trait::async_trait;
 use solana_account::Account;
@@ -29,17 +30,19 @@ use crate::{
 
 /// Describes which type of swap the user is performing.
 ///
-/// * `ExactIn`  — The user specifies exactly how many input atoms they want
-///   to spend, and the venue returns a quote for the resulting output amount.
-///
-/// * `ExactOut` — The user specifies exactly how many output atoms they want
-///   to receive, and the venue determines how many input atoms are required.
-///
-/// **Warning:** Titan currently only supports `ExactIn`. Implementers *must*
-/// support `ExactIn`, and may optionally support `ExactOut` for future use.
+/// **Titan only supports `ExactIn`.** It only ever calls a venue with
+/// `ExactIn`, and `ExactOut` is not routed today. Venues are not required to
+/// implement `ExactOut` — returning an error for it is fine — but must not
+/// panic. The variant is kept as a forward-compat signal only.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SwapType {
+    /// The user specifies exactly how many input atoms they want to spend, and
+    /// the venue returns a quote for the resulting output amount. The only mode
+    /// Titan supports today.
     ExactIn,
+    /// The user specifies exactly how many output atoms they want to receive,
+    /// and the venue determines how many input atoms are required. Reserved for
+    /// future use — Titan does NOT route `ExactOut` today.
     ExactOut,
 }
 
@@ -57,10 +60,8 @@ pub struct QuoteRequest {
     /// Amount of *input* or *output* atoms, depending on `swap_type`.
     pub amount: u64,
 
-    /// Swap mode: `ExactIn` or `ExactOut`.
-    ///
-    /// Titan currently calls venues only with `ExactIn`, but venues should
-    /// not panic if `ExactOut` is provided.
+    /// Swap mode. Titan only ever sets this to `ExactIn`; venues need not
+    /// implement `ExactOut` and may return an error for it, but must not panic.
     pub swap_type: SwapType,
 }
 
@@ -87,6 +88,35 @@ pub struct QuoteResult {
     /// For example, if a pool only has enough liquidity for half of the provided
     /// input, this flag should be set to `true` and `amount = request.amount / 2`.
     pub not_enough_liquidity: bool,
+
+    /// Price at the requested amount.
+    ///
+    /// Let `f(x)` be the number of output atoms produced for an `ExactIn` swap
+    /// of `x` input atoms against the current pool state. `price` is the
+    /// instantaneous exchange rate at the quoted size — the derivative of the
+    /// output curve with respect to the input, evaluated at `amount`:
+    ///
+    /// ```text
+    /// price = f'(amount)        // output atoms per input atom
+    /// ```
+    ///
+    /// `price` is the marginal derivative of the raw quote curve:
+    ///
+    /// ```text
+    /// price = d(output_atoms) / d(input_atoms)
+    /// ```
+    ///
+    /// Do not apply UI decimal scaling here. Use the same raw atom units as
+    /// `request.amount` and `expected_output`. At `amount == 0` this is the
+    /// venue's *spot price*.
+    ///
+    /// How you obtain the derivative is up to you. Titan does not prescribe a method, but
+    /// the value **must** satisfy the invariants described on [`TradingVenue::quote`]:
+    /// it must be positive on a valid quote, non-increasing as `amount` grows
+    /// (concavity), and consistent with the realized output (the mean value
+    /// theorem). These properties are exercised by the pricing test suite. You **must** provide
+    /// a spot price at 0.
+    pub price: f64,
 }
 
 /// A convenience trait for converting on-chain accounts into structured pool/venue state.
@@ -116,7 +146,7 @@ pub trait AddressLookupTableTrait {
     ) -> Result<Vec<Pubkey>, TradingVenueError>;
 }
 
-/// Primary trait describing an AMM or trading venue integrated with Titan.
+/// Public template trait describing an AMM or trading venue for Titan integration.
 ///
 /// Any AMM, orderbook, or custom liquidity engine must implement this trait
 /// to be usable by Titan’s routing system.
@@ -142,6 +172,27 @@ pub trait TradingVenue {
     /// The default implementation pulls these from the venue's `TokenInfo`.
     fn tradable_mints(&self) -> Result<Vec<Pubkey>, TradingVenueError> {
         Ok(self.get_token_info().iter().map(|x| x.pubkey).collect())
+    }
+
+    /// Return every declared input/output token-index pair this venue can quote.
+    ///
+    /// The default assumes every distinct pair in `get_token_info()` is tradable.
+    /// Override this if your pool has more than two tokens but only supports a
+    /// subset of directions.
+    fn directions_num(&self) -> Vec<(u8, u8)> {
+        let indices: Vec<u8> = (0..self.get_token_info().len())
+            .filter_map(|index| u8::try_from(index).ok())
+            .collect();
+
+        indices
+            .iter()
+            .flat_map(|&i| {
+                indices
+                    .iter()
+                    .filter(move |&&j| j != i)
+                    .map(move |&j| (i, j))
+            })
+            .collect()
     }
 
     /// Return the decimals for each tradable token.
@@ -185,6 +236,40 @@ pub trait TradingVenue {
     /// **Implementer requirement:** the venue **must** handle zero input amounts
     /// without panicking or returning an error. Titan sometimes requests zero-input
     /// quotes.
+    ///
+    /// Titan only ever calls this with `SwapType::ExactIn`. Venues need not
+    /// implement `ExactOut` (returning an error for it is acceptable) but must
+    /// not panic on it.
+    ///
+    /// # Pricing requirements
+    ///
+    /// In addition to `expected_output`, every quote must report a price
+    /// (see [`QuoteResult::price`]). Titan relies on this price for
+    /// routing, so the quote function `f(x) -> output` and the price
+    /// `p(x) = f'(x)` it reports must be mutually consistent and well-behaved on
+    /// the venue's valid input range `[lower_bound, upper_bound]`:
+    ///
+    /// 1. **Monotonic output.** `f` is non-decreasing: a larger `ExactIn` amount
+    ///    never returns less output.
+    ///
+    /// 2. **Monotonic (non-increasing) price / concavity.** `p` is non-increasing
+    ///    in `amount`. Larger fills receive a weaker rate; the output
+    ///    curve is concave. In particular `price > 0` for any valid quote.
+    ///
+    /// 3. **Mean value theorem.** The reported price must bracket the realized
+    ///    average rate over any interval. For `a < b`, the chord
+    ///
+    ///    ```text
+    ///    chord = (f(b) - f(a)) / (b - a)
+    ///    ```
+    ///
+    ///    must satisfy `p(b) <= chord <= p(a)`. Equivalently, there is some
+    ///    `c in [a, b]` with `p(c) == chord`: the price you quote is the genuine
+    ///    derivative of the output you quote, not an unrelated number.
+    ///
+    /// These invariants are checked directly by the pricing tests shipped with
+    /// this template (monotonicity and mean-value-theorem tests). A venue whose
+    /// `price` is inconsistent with its `expected_output` will fail them.
     fn quote(&self, request: QuoteRequest) -> Result<QuoteResult, TradingVenueError>;
 
     /// Construct the transaction instruction needed to execute a swap.

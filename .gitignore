@@ -6,6 +6,11 @@
 /target/
 /**/target/
 
+# Local Solana program dumps used by simulation tests
+/program-template/program-dumps/
+# Program binaries fetched by `make dump-programs` for the off-chain sim tests
+/programs/*.so
+
 # Cargo package / release artifacts
 /*.crate
 
