@@ -16,7 +16,10 @@ use crate::{
     },
     trading_venue::{
         AddressLookupTableTrait, FromAccount, QuoteRequest, QuoteResult, SwapType, TradingVenue,
-        error::TradingVenueError, protocol::PoolProtocol, token_info::TokenInfo,
+        error::TradingVenueError,
+        protocol::PoolProtocol,
+        token_info::TokenInfo,
+        venue_creation::{ParsedInstruction, PoolCreation},
     },
 };
 
@@ -25,6 +28,92 @@ mod raydium;
 
 pub const RAYDIUM_AMM_PROGRAM_ID: Pubkey =
     Pubkey::from_str_const("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
+
+/// Detect every Raydium AMM pool created by a confirmed transaction.
+///
+/// This is the live-pool-tracking half of the integration: Titan feeds the
+/// decompiled instructions of confirmed transactions through here, and each
+/// returned [`PoolCreation::pool`] is then built into a venue via
+/// [`RaydiumAmmVenue::from_account`]. See
+/// [`crate::trading_venue::venue_creation`] for the contract and
+/// `tests/venue_creation.rs` for a worked fixture.
+pub fn parse_pool_creations(instructions: &[ParsedInstruction]) -> Vec<PoolCreation> {
+    // Raydium creates a pool with `initialize2` (tag byte 1). The new pool, coin
+    // mint and pc mint sit at fixed positions in its account list:
+    // https://github.com/raydium-io/raydium-amm/ (program/src/instruction.rs).
+    const INITIALIZE2_TAG: u8 = 1;
+    const POOL_INDEX: usize = 4;
+    const COIN_MINT_INDEX: usize = 8;
+    const PC_MINT_INDEX: usize = 9;
+
+    instructions
+        .iter()
+        .filter(|ix| ix.program_id == RAYDIUM_AMM_PROGRAM_ID)
+        .filter(|ix| ix.data.first() == Some(&INITIALIZE2_TAG))
+        .filter_map(|ix| {
+            // Defensive: a real `initialize2` always carries these accounts, but
+            // never index past a malformed instruction.
+            let pool = *ix.accounts.get(POOL_INDEX)?;
+            let coin_mint = *ix.accounts.get(COIN_MINT_INDEX)?;
+            let pc_mint = *ix.accounts.get(PC_MINT_INDEX)?;
+            Some(PoolCreation {
+                protocol: PoolProtocol::RaydiumAMM,
+                pool,
+                mints: vec![coin_mint, pc_mint],
+            })
+        })
+        .collect()
+}
+
+/// Price (`f'(amount)`) of the constant-product curve, in output
+/// atoms per input atom. See [`crate::trading_venue::QuoteResult::price`].
+///
+/// This pool is a constant product `x * y = k` with a proportional input fee.
+/// Writing `X` for the input reserve, `Y` for the output reserve and `phi` for
+/// the fee fraction, the output for an `ExactIn` swap of `x` input atoms is
+///
+/// ```text
+/// x_eff = (1 - phi) * x
+/// f(x)  = Y * x_eff / (X + x_eff)
+/// ```
+///
+/// which we differentiate by hand to get the price
+///
+/// ```text
+/// f'(x) = Y * (1 - phi) * X / (X + x_eff)^2
+/// ```
+///
+/// This is positive, decreasing in `x` (the curve is concave) and equals the
+/// true derivative of `f`, so it satisfies the monotonicity and mean-value
+/// invariants Titan's pricing tests check for.
+fn price(calculate_result: &CalculateResult, swap_direction: SwapDirection, amount: u64) -> f64 {
+    // Reserves are oriented so that `input_reserve` always backs the token
+    // being sold and `output_reserve` the token being bought.
+    let (input_reserve, output_reserve) = match swap_direction {
+        // Selling coin, receiving pc.
+        SwapDirection::Coin2PC => (
+            calculate_result.pool_coin_vault_amount as f64,
+            calculate_result.pool_pc_vault_amount as f64,
+        ),
+        // Selling pc, receiving coin.
+        SwapDirection::PC2Coin => (
+            calculate_result.pool_pc_vault_amount as f64,
+            calculate_result.pool_coin_vault_amount as f64,
+        ),
+    };
+
+    let fee_fraction = if calculate_result.swap_fee_denominator == 0 {
+        0.0
+    } else {
+        calculate_result.swap_fee_numerator as f64 / calculate_result.swap_fee_denominator as f64
+    };
+    let keep = 1.0 - fee_fraction;
+
+    let effective_in = keep * amount as f64;
+    let denom = input_reserve + effective_in;
+
+    output_reserve * keep * input_reserve / (denom * denom)
+}
 
 #[derive(Clone)]
 pub struct RaydiumAmmVenue {
@@ -160,6 +249,20 @@ impl TradingVenue for RaydiumAmmVenue {
             return Err(TradingVenueError::InvalidMint(request.input_mint.into()));
         };
 
+        // A zero-input quote produces no output, but Titan still expects the
+        // venue's spot price. Short-circuit here: `swap_exact_amount` rejects a
+        // zero fee and would otherwise error on `amount == 0`.
+        if request.amount == 0 {
+            return Ok(QuoteResult {
+                input_mint: request.input_mint,
+                output_mint: request.output_mint,
+                amount: 0,
+                expected_output: 0,
+                not_enough_liquidity: false,
+                price: price(&calculate_result, swap_direction, 0),
+            });
+        }
+
         let output_amount = swap_with_slippage(
             self.pc_balance,
             self.coin_balance,
@@ -173,12 +276,15 @@ impl TradingVenue for RaydiumAmmVenue {
             0,
         )?;
 
+        let price = price(&calculate_result, swap_direction, request.amount);
+
         Ok(QuoteResult {
             input_mint: request.input_mint,
             output_mint: request.output_mint,
             amount: request.amount,
             expected_output: output_amount,
             not_enough_liquidity: false,
+            price,
         })
     }
 
@@ -326,5 +432,79 @@ impl AddressLookupTableTrait for RaydiumAmmVenue {
         ];
 
         Ok(result_vec)
+    }
+}
+
+#[cfg(test)]
+mod price_math_tests {
+    use super::{CalculateResult, price};
+    use crate::example::amm::swap_exact_amount;
+    use crate::example::raydium::math::SwapDirection;
+
+    fn sample_pool() -> CalculateResult {
+        CalculateResult {
+            // Roughly a SOL/USDC-shaped pool, in atom units.
+            pool_pc_vault_amount: 5_000_000_000_000,
+            pool_coin_vault_amount: 30_000_000_000_000,
+            pool_lp_amount: 0,
+            swap_fee_numerator: 25,
+            swap_fee_denominator: 10_000,
+        }
+    }
+
+    /// The analytic price must agree with a central finite difference
+    /// of the venue's actual (integer) output curve. This is the property the
+    /// mean-value-theorem test relies on at runtime.
+    #[test]
+    fn price_matches_finite_difference() {
+        let cr = sample_pool();
+
+        for dir in [SwapDirection::Coin2PC, SwapDirection::PC2Coin] {
+            for &x in &[1_000_000u64, 50_000_000, 1_000_000_000, 50_000_000_000] {
+                let analytic = price(&cr, dir, x);
+
+                // Central difference of the real swap math, fee included.
+                let h = (x / 1000).max(1_000);
+                let f = |amt: u64| {
+                    swap_exact_amount(
+                        cr.pool_pc_vault_amount,
+                        cr.pool_coin_vault_amount,
+                        cr.swap_fee_numerator,
+                        cr.swap_fee_denominator,
+                        dir,
+                        amt,
+                        true,
+                    )
+                    .unwrap() as f64
+                };
+                let fd = (f(x + h) - f(x - h)) / (2.0 * h as f64);
+
+                let rel = (analytic - fd).abs() / fd.abs().max(1e-9);
+                assert!(
+                    rel < 1e-2,
+                    "dir={dir:?} x={x}: analytic={analytic} finite_diff={fd} rel_err={rel}"
+                );
+            }
+        }
+    }
+
+    /// The price is positive and strictly decreasing in size
+    /// (the curve is concave), matching the monotonicity test's expectation.
+    #[test]
+    fn price_is_positive_and_decreasing() {
+        let cr = sample_pool();
+
+        for dir in [SwapDirection::Coin2PC, SwapDirection::PC2Coin] {
+            let mut prev = f64::INFINITY;
+            for &x in &[0u64, 1_000, 1_000_000, 1_000_000_000, 100_000_000_000] {
+                let p = price(&cr, dir, x);
+                assert!(p > 0.0, "dir={dir:?} x={x}: price {p} not positive");
+                assert!(
+                    p <= prev,
+                    "dir={dir:?} x={x}: price {p} increased above {prev}"
+                );
+                prev = p;
+            }
+        }
     }
 }

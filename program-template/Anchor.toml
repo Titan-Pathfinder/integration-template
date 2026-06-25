@@ -1,0 +1,16 @@
+[toolchain]
+solana_version = "3.1.13"
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+titan_v3_venue_template = "T1TANpTeScyeqVzzgNViGDNrkQ6qHz9KrSBS4aNXvGT"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
