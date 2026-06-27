@@ -30,6 +30,11 @@ anchor-spl = "0.31.1"
 [dev-dependencies]
 borsh = "0.10.4"
 env_logger = "0.11.3"
+# `solana-sdk` pulls `solana-secp256r1-program -> openssl`; the `vendored`
+# feature builds a static OpenSSL from source so the route-test host binaries
+# link on machines without a matching system `libssl` (e.g. an arm64 Mac with
+# only an x86_64 Homebrew). Test-only — never compiled into the on-chain program.
+openssl = { version = "0.10", features = ["vendored"] }
 litesvm = "^0.6.1"
 log = "0.4.28"
 solana-account = "2.2.1"

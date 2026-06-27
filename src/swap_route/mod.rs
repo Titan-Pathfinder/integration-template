@@ -48,16 +48,11 @@ pub const ROUTE_WEIGHT_ALL: u32 = 1_000_000_000;
 /// to the wrong venue. The program template's enum-parity test guards this.
 #[derive(BorshSerialize, BorshDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Venue {
-    RaydiumAmm,
-    // FILL_IN: add your venue variant here, in the SAME position as in
-    // `state.rs`. Include any CPI parameters the router must pass to your venue
-    // adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
-}
-
-#[allow(dead_code)]
-fn fill_in_route_venue_variant() -> ! {
-    todo!("add your route Venue variant in the same position as the program enum")
+    /// A Quay swap leg. `sell_base` is Quay's `side` (true = sell base / side 0,
+    /// false = buy base / side 1); the program encodes it into the swap
+    /// instruction's trailing `side` byte. Must match the program `Venue` enum
+    /// (same variants, same order — see the enum-parity test).
+    Quay { sell_base: bool },
 }
 
 impl Venue {
@@ -95,11 +90,18 @@ pub fn protocol_to_venue(
     request: &QuoteRequest,
 ) -> Result<Venue, TradingVenueError> {
     match venue.protocol() {
-        PoolProtocol::RaydiumAMM => Ok(Venue::RaydiumAmm),
-        // FILL_IN: map your PoolProtocol variant to your Venue variant.
-        PoolProtocol::YourPoolProtocol => {
-            let _ = (venue, request);
-            todo!("map YourPoolProtocol to your Venue variant")
+        PoolProtocol::Quay => {
+            // Quay's `side`: 0 (sell base) when the input mint is the base mint,
+            // 1 (buy base) otherwise. `get_token_info()[0]` is the base mint
+            // (`QuayVenue::update_state` orders the pair `[base, quote]`).
+            let base_mint = venue
+                .get_token_info()
+                .first()
+                .map(|t| t.pubkey)
+                .ok_or_else(|| TradingVenueError::MissingState("Quay token info".into()))?;
+            Ok(Venue::Quay {
+                sell_base: request.input_mint == base_mint,
+            })
         }
     }
 }
@@ -276,13 +278,23 @@ mod tests {
         }
     }
 
+    /// A `TokenInfo` whose mint matches `request()`'s input mint, so
+    /// `protocol_to_venue` resolves `sell_base = true`.
+    fn base_token_info() -> TokenInfo {
+        TokenInfo {
+            pubkey: Pubkey::new_from_array([1u8; 32]),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn protocol_maps_to_venue() {
         let request = request();
-        let raydium = mock_venue(PoolProtocol::RaydiumAMM, vec![]);
+        // base mint == input mint -> sell_base.
+        let quay = mock_venue(PoolProtocol::Quay, vec![base_token_info()]);
         assert_eq!(
-            protocol_to_venue(&raydium, &request).unwrap(),
-            Venue::RaydiumAmm
+            protocol_to_venue(&quay, &request).unwrap(),
+            Venue::Quay { sell_base: true }
         );
     }
 
@@ -292,8 +304,8 @@ mod tests {
         let venue = MockVenue {
             titan_pda,
             other: Pubkey::new_from_array([8u8; 32]),
-            protocol: PoolProtocol::RaydiumAMM,
-            token_info: vec![],
+            protocol: PoolProtocol::Quay,
+            token_info: vec![base_token_info()],
         };
 
         let (spec, accounts) =
@@ -302,7 +314,7 @@ mod tests {
         // Two venue accounts + the appended program id.
         assert_eq!(accounts.len(), 3);
         assert_eq!(spec.n_accounts, 3);
-        assert_eq!(spec.venue, Venue::RaydiumAmm);
+        assert_eq!(spec.venue, Venue::Quay { sell_base: true });
         assert_eq!((spec.from, spec.to), (0, 1));
 
         // TitanPDA must no longer be marked a signer.
@@ -318,7 +330,7 @@ mod tests {
     #[test]
     fn encodes_instruction_data_like_anchor() {
         let spec = SwapSpecInputV2 {
-            venue: Venue::RaydiumAmm,
+            venue: Venue::Quay { sell_base: false },
             from: 0,
             to: 1,
             weight_nanos: ROUTE_WEIGHT_ALL,
@@ -330,7 +342,8 @@ mod tests {
         expected.extend_from_slice(&5_000u64.to_le_bytes()); // amount
         expected.push(2); // mints
         expected.extend_from_slice(&1u32.to_le_bytes()); // swaps len
-        expected.push(0); // Venue::RaydiumAmm discriminant
+        expected.push(0); // Venue::Quay discriminant
+        expected.push(0); // sell_base = false
         expected.push(0); // from
         expected.push(1); // to
         expected.extend_from_slice(&ROUTE_WEIGHT_ALL.to_le_bytes());
@@ -340,17 +353,10 @@ mod tests {
 
     #[test]
     fn venue_borsh_bytes_are_stable() {
-        assert_eq!(Venue::RaydiumAmm.to_borsh_bytes(), vec![0]);
         assert_eq!(
-            Venue::TemplateVenue {
-                zero_for_one: false,
-            }
-            .to_borsh_bytes(),
-            vec![1, 0]
+            Venue::Quay { sell_base: false }.to_borsh_bytes(),
+            vec![0, 0]
         );
-        assert_eq!(
-            Venue::TemplateVenue { zero_for_one: true }.to_borsh_bytes(),
-            vec![1, 1]
-        );
+        assert_eq!(Venue::Quay { sell_base: true }.to_borsh_bytes(), vec![0, 1]);
     }
 }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+quay-sdk = { path = "../quay-adapters/vendor/quay-sdk" }
 arrayref = "0.3.6"
 bytemuck = { version = "1.22", features = ["derive"] }
 num_enum = "0.5.7"
