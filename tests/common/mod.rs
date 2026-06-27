@@ -1,9 +1,8 @@
 //! Shared, venue-generic test suite.
 //!
-//! Both `tests/example.rs` (the Raydium reference) and `tests/your_venue.rs`
-//! (your integration) run *these* functions against their venue type, so the
-//! example and your venue are held to exactly the same bar and the two suites
-//! cannot drift.
+//! `tests/quay.rs` runs *these* functions against `QuayVenue`. Keeping the
+//! assertions here (generic over the venue type) makes this module the single
+//! source of truth for what a Titan venue must satisfy.
 //!
 //! Every function gates on prerequisites and SKIPs (returns) when they're
 //! missing, so `cargo test` is clean on a fresh clone:
@@ -33,9 +32,9 @@ use spl_token::state::{Account as TokenAccount, AccountState};
 
 use assert_no_alloc::assert_no_alloc;
 
-use titan_integration_template::account_caching::AccountsCache;
-use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
-use titan_integration_template::trading_venue::{
+use quay_titan_integration::account_caching::AccountsCache;
+use quay_titan_integration::account_caching::rpc_cache::RpcClientCache;
+use quay_titan_integration::trading_venue::{
     FromAccount, QuoteRequest, SwapType, TradingVenue,
 };
 

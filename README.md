@@ -1,139 +1,85 @@
-# Titan AMM Integration Template
+# Quay × Titan Integration
 
-A reference implementation and test suite for adding AMMs, CLMMs, and proprietary liquidity engines to Titan’s routing layer.
+Titan `TradingVenue` integration for the [Quay](https://quay.markets) program — a
+DSL-priced, market-maker liquidity engine on Solana. It exposes each Quay
+Strategy as a quotable venue for Titan's router and provides the on-chain CPI
+adapter Titan calls during routed swaps.
 
-## Overview
+## What's here
 
-Titan aggregates liquidity from heterogeneous venues (AMMs, CLMMs, orderbooks, proprietary pools) under a single unified quoting and routing interface.
+- **`src/quay/`** — the `QuayVenue` adapter: account loading (`FromAccount`),
+  per-slot state refresh (`update_state`), exact-in quote math with a marginal
+  price, swap-instruction construction, address-lookup-table keys, and
+  pool-creation parsing for live discovery.
+- **`src/trading_venue/`** — the Titan venue contract (`TradingVenue`,
+  `QuoteRequest`/`QuoteResult`, `bounds`, `TokenInfo`, `PoolProtocol::Quay`).
+- **`src/swap_route/`** — the off-chain route-leg builder and the `Venue` enum
+  that mirrors the on-chain program.
+- **`program-template/`** — the Anchor route program with the Quay venue CPI
+  adapter (`instructions/venues/quay.rs`) Titan's router invokes.
 
-This repository provides:
+One `QuayVenue` is one Strategy — one pricing curve on one `(base_mint,
+quote_mint)` pair. Titan's router holds many (one per active strategy) and
+aggregates quote distribution across them.
 
-- A compact `TradingVenue` template for describing quote math, token metadata, account loading, and swap instruction shape
-- A robust boundary-search engine for computing safe swap-size ranges
-- Token metadata utilities, including Token-2022 support
-- A caching abstraction for efficient on-chain account loading
-- Simulation tests using LiteSVM ensuring off-chain quotes match on-chain execution
-- Pricing tests ensuring the reported marginal price is consistent with the quoted output
-- A fully worked Raydium example implementation
+## How quoting works
 
-This template is the starting point for integrating your AMM into Titan.
+- Titan routes `ExactIn` only. All amounts and prices are in raw atoms.
+- `quote()` calls `quay_sdk::simulate::simulate_swap_in` (bit-identical to the
+  on-chain `swap`) on a fixed-size stack buffer — **no heap allocation**, every
+  curve, stateful or not.
+- `QuoteResult::price` is the marginal rate `d(output)/d(input)`. Because the DSL
+  curve is a black box, it's computed by finite difference with the step sized to
+  a fixed output target (`2^20` atoms) so integer-atom quantization stays well
+  under Titan's mean-value-theorem tolerance.
+- A strategy is surfaced only when it opts into Titan (`routing_flags &
+  ROUTE_TITAN`), its on-chain halt set is clear, and it has no transfer-fee mints.
 
-## On-Chain CPI Template
+## On-chain CPI adapter
 
-This repo also includes `program-template/`, an Anchor template for the venue CPI
-adapter Titan's router program calls during routed swaps.
-
-Use it to verify your venue's on-chain swap instruction shape against Titan
-router account layout and TitanPDA custody:
-
-```bash
-cargo check --manifest-path program-template/Cargo.toml
-make build-program
-```
-
-The program template includes a real Raydium AMM CPI example plus a minimal
-`venues/template.rs` file showing the common venue adapter shape.
-
-## Core Components
-
-- `TradingVenue`: implement account parsing, state refresh, token metadata,
-  protocol labeling, exact-in quote math, and swap instruction construction.
-- `QuoteRequest` / `QuoteResult`: Titan routes `ExactIn` only. All amounts and
-  prices use raw atom units, not UI decimal scaling.
-- `QuoteResult::price`: report the marginal derivative
-  `d(output_atoms) / d(input_atoms)`. It must be positive, non-increasing, and
-  consistent with `expected_output`.
-- `bounds`: finds safe input ranges from a zero-input-safe `quote()`.
-- `TokenInfo`: covers SPL Token, Token-2022, and transfer fee metadata. Do not
-  duplicate transfer-fee handling in quote math.
-- `AccountsCache`: loads required on-chain accounts with RPC caching.
-
-## Included Tests
-
-Every venue must pass the same shared suite in `tests/common/mod.rs`, run through
-`tests/example.rs` for the Raydium reference and `tests/your_venue.rs` for your
-integration.
-
-- Construction and boundaries: deserialization, state loading, token info,
-  boundary quotes, and no heap allocation inside `quote()`.
-- Simulation: LiteSVM swaps compare on-chain output to off-chain `quote()` at
-  boundaries and random samples, while checking accounts, monotonicity, and
-  quote speed.
-- Pricing: `price` must be positive, non-increasing, and bracket the realized
-  average rate: `price(b) <= (f(b) - f(a)) / (b - a) <= price(a)`. The tests
-  include atom-rounding slack for truncated integer outputs.
-
-## Implementing Your Own Venue
-
-Fill in the skeleton at **`src/your_venue/mod.rs`**, then wire the matching tests,
-route builder, and program template files below. `program-template/...` means
-`program-template/programs/titan-v3-venue-template`.
-
-| Layer | File | Function / item | Update required |
-| --- | --- | --- | --- |
-| Creation parser | `src/your_venue/mod.rs` | `YOUR_PROGRAM_ID` | Replace with your venue's on-chain program id. |
-| Creation parser | `src/your_venue/mod.rs` | `parse_pool_creations()` | Detect real pool-creation instructions and return `PoolCreation { protocol, pool, mints }`. |
-| Creation parser | `tests/your_venue_creation.rs` | constants + `your_venue_pool_creation()` | Add a no-RPC fixture for one real pool-creation instruction. |
-| Quote layer | `src/trading_venue/protocol.rs` | `PoolProtocol::YourPoolProtocol` | Rename or replace with your real protocol variant and display string. |
-| Quote layer | `src/your_venue/mod.rs` | `YourVenue` fields | Add the pool state your quote math needs. |
-| Quote layer | `src/your_venue/mod.rs` | `FromAccount::from_account()` | Deserialize the pool account and record state accounts to refresh. |
-| Quote layer | `src/your_venue/mod.rs` | `protocol()` | Return your real `PoolProtocol` variant. |
-| Quote layer | `src/your_venue/mod.rs` | `update_state()` | Fetch accounts through `AccountsCache`, deserialize live state, populate `token_info`, and initialize the venue. |
-| Quote layer | `src/your_venue/mod.rs` | `quote()` | Implement exact-in quote math, including raw-atom marginal price. |
-| Quote layer | `src/your_venue/mod.rs` | `generate_swap_instruction()` | Build your venue's swap instruction with the same per-leg `AccountMeta` shape the route builder will pass through. |
-| Quote layer | `tests/your_venue.rs` | `pool()` + `programs()` | Point the shared off-chain suite at a real pool and required program binaries. |
-| Route builder | `src/swap_route/mod.rs` | `Venue` enum | Add your route-builder venue variant in the same position and shape as the program template enum. |
-| Route builder | `src/swap_route/mod.rs` | `protocol_to_venue()` | Map your `PoolProtocol` to your route-builder `Venue`; include any CPI parameters the program template must pass to your adapter. |
-| Program layer | `program-template/.../src/state.rs` | `Venue` enum | Add the matching program-template venue variant, including any CPI parameters your adapter needs. |
-| Program layer | `program-template/.../src/instructions/venues/template.rs` | `swap(<venue fields>, amount_in, account_metas)` | Replace this template with your venue CPI adapter: set program id, discriminator, and exact-in serialization. If renamed, remove the old placeholder so the scorecard no longer sees the default id. |
-| Program layer | `program-template/.../src/instructions/venues/mod.rs` | `pub mod <venue>;` | Register your venue CPI adapter. |
-| Program layer | `program-template/.../src/instructions/swap_route_v3.rs` | `perform_cpi_swap()` | Dispatch your `Venue` variant to your venue CPI adapter. |
-| Program layer | `program-template/.../tests/venue_parity.rs` | parity cases | Add cases proving the route-builder and program-template venue enums serialize identically. |
-| Program layer | `program-template/.../tests/your_venue_route.rs` | `pool()` + `venue_programs()` | Point the route simulation at a real pool and CPI program dependencies. |
-
-If your swap CPI touches additional runtime programs, include them in
-`program_dependencies()` and in the test program lists above.
-
-### Running the tests
+`program-template/` is the Anchor route program. `swap_route_v3` takes custody
+through the TitanPDA and CPIs into each leg's venue adapter;
+`instructions/venues/quay.rs` builds Quay's `swap` instruction (`[disc 0x20,
+amount_in u64, min_out=0 u64, side u8]`) and forwards the route-assembled account
+metas. The off-chain `swap_route::Venue` and the on-chain `state::Venue` enums are
+kept byte-identical by `tests/venue_parity.rs`.
 
 ```bash
-make build-program   # build the Titan router program template
-make check-structure # fast no-RPC sanity checks
-make test-example   # the Raydium reference suite — always green
-make test-venue     # YOUR venue's suite (red until you implement YourVenue)
-make scorecard      # print the integration scorecard only
-make dump-programs  # fetch the program binaries the simulation tests load
+make build-program   # anchor build of the route program
 ```
 
-The example and your venue run the *same* shared suite, so both are held to the
-same bar. Everything runs cleanly on a fresh clone: the construction, simulation,
-and pricing tests need a mainnet RPC endpoint (and, for the simulations, dumped
-program binaries), so they **SKIP with an explanation** instead of failing when
-those prerequisites are absent. To run them for real:
+## Testing
+
+```bash
+make check-structure  # no-RPC: lib tests + scorecard + Venue enum parity
+make scorecard        # print the integration scorecard
+make test-venue       # the full Quay venue suite (needs RPC; see below)
+make dump-programs     # dump the Quay program binary for the simulation tests
+```
+
+`make check-structure` runs on a fresh clone with no network. The full suite
+(`make test-venue`) drives the shared assertions in `tests/common/mod.rs` against
+a live Titan-routed Quay strategy and skips with an explanation when
+`SOLANA_RPC_URL` (and, for the on-chain route test, `make build-program` +
+`make dump-programs`) are absent:
 
 ```bash
 export SOLANA_RPC_URL=https://...   # a mainnet RPC endpoint
-make build-program                  # rebuild the Titan router program template
-make dump-programs                  # one-time: dump the venue programs into programs/
-make test-example
+make build-program
+make dump-programs
 make test-venue
 ```
 
-`make check-structure` runs unit tests, scorecard assertions, and `Venue` enum
-parity checks without requiring RPC.
+The suite covers construction/boundaries, zero-input spot price, output
+monotonicity, sub-1µs quote speed, price monotonicity and the mean-value
+theorem, and on-chain parity — LiteSVM executes the adapter's own swap (and the
+full route CPI) and asserts the fill equals `quote()`.
 
-`make scorecard` prints both scorecard sections: the *Example* section is your
-always-green baseline (all four layers wired), and the *Your venue* section
-tracks which placeholders you've replaced across the creation parser, quote,
-program, and route-builder layers.
+## Design notes
 
-If your venue passes the suite, your quote() logic is sufficient to be assessed by
-our team and go through the next stages of integration.
-
-## Tips for Integrators
-1. Always support zero-input quoting
-2. Keep your deserialization strictly defensive, never panic
-3. Don’t perform I/O, allocate heap memory, or panic inside quote()
-4. A quote must average under 1 microsecond (1µs) — see the quoting_speed test
-5. Make sure your instruction accounts match the program’s expectations
-6. Report a marginal `price` in raw output atoms per raw input atom — positive, non-increasing in size, and consistent with `expected_output`
+- **Zero-input safe** — Titan requests `amount == 0` quotes for the spot rate;
+  `quote()` returns zero output with a positive `f'(0)`.
+- **No panics, defensive decoding** — malformed accounts surface as errors.
+- **Live clock** — `get_required_pubkeys_for_update()` includes the `Clock`
+  sysvar so curves using `LoadNowSlot` / `LoadNowUnixSec` see the same numbers a
+  real swap would, deduped across all Quay venues.

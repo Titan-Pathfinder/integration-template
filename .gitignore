@@ -50,6 +50,8 @@
 # Linux
 *.tmp
 *.lock
+# ...but DO track Cargo.lock so `clone && cargo test` is reproducible.
+!Cargo.lock
 
 # Windows
 Thumbs.db

@@ -1,10 +1,8 @@
-//! Shared, venue-generic swap-route suite for the on-chain template.
+//! Shared, venue-generic swap-route suite for the on-chain program.
 //!
-//! Both `tests/example_route.rs` (the Raydium reference) and
-//! `tests/your_venue_route.rs` (your integration) call [`run_swap_route`], so
-//! the example and your venue are exercised by the same end-to-end test:
-//! quote off-chain, execute `swap_route_v3` in LiteSVM, and
-//! assert the simulated output matches the quote.
+//! `tests/quay_route.rs` calls [`run_swap_route`]: quote off-chain, execute
+//! `swap_route_v3` in LiteSVM (which CPIs into the Quay venue adapter), and
+//! assert the simulated output matches the quote in every declared direction.
 //!
 //! It runtime-SKIPs (prints a reason and returns) when prerequisites are
 //! missing, so `cargo test` stays clean on a fresh clone. It needs:
@@ -34,14 +32,14 @@ use solana_sysvar::clock::{self, Clock};
 use solana_transaction::Transaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as TokenAccount, AccountState};
-use titan_integration_template::account_caching::AccountsCache;
-use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
-use titan_integration_template::swap_route::{
+use quay_titan_integration::account_caching::AccountsCache;
+use quay_titan_integration::account_caching::rpc_cache::RpcClientCache;
+use quay_titan_integration::swap_route::{
     ROUTE_WEIGHT_ALL, build_swap_leg, encode_swap_route_v3_data,
 };
-use titan_integration_template::trading_venue::error::TradingVenueError;
-use titan_integration_template::trading_venue::token_info::TokenInfo;
-use titan_integration_template::trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue};
+use quay_titan_integration::trading_venue::error::TradingVenueError;
+use quay_titan_integration::trading_venue::token_info::TokenInfo;
+use quay_titan_integration::trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue};
 use titan_v3_venue_template::state::TitanPda;
 
 const SAMPLE_COUNT: usize = 10;

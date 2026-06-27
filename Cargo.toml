@@ -1,50 +1,46 @@
 [package]
-name = "titan-integration-template"
+name = "quay-titan-integration"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-arrayref = "0.3.6"
-bytemuck = { version = "1.22", features = ["derive"] }
-num_enum = "0.5.7"
-enumflags2 = "0.6.4"
-borsh = { version = "1.5.7", features = ["derive"] }
-serde = "1.0.203"
-serde_json = "1.0.117"
-num-traits = "0.2"
-uint = "0.9.5"
-safe-transmute = "0.11.2"
-solana-client = "2.2.1"
-solana-rpc-client = "2.2.1"
-solana-pubkey = "2.2.1"
-solana-program = "2.2.1"
-solana-program-pack = "2.2.1"
-solana-program-option = "2.2.1"
-solana-sysvar = "2.2.1"
-solana-sdk-ids = "2.2.1"
-solana-account = "2.2.1"
-solana-account-info = "2.2.1"
-solana-instruction = "2.2.1"
-solana-compute-budget = "2.2.1"
-solana-transaction = "2.2.1"
-solana-hash = "2.2.1"
-solana-sdk = "2.2.1"
-solana-instructions-sysvar = "2.2.1"
-bincode = "1.3.3"
-dashmap = "6.0.1"
-ahash = "0.8.11"
-rstest = "0.18"
+quay-sdk = "0.0.3"
 async-trait = "0.1.80"
 thiserror = "1.0.61"
-tokio = { version = "1.38.0", features = ["full"] }
 log = "0.4.28"
-env_logger = "0.11.3"
+borsh = { version = "1.5.7", features = ["derive"] }
+dashmap = "6.0.1"
+ahash = "0.8.11"
+solana-account = "2.2.1"
+solana-client = "2.2.1"
+solana-instruction = "2.2.1"
+solana-program = "2.2.1"
+solana-pubkey = "2.2.1"
+solana-rpc-client = "2.2.1"
+solana-sdk-ids = "2.2.1"
 spl-token = { version = "7", features = ["no-entrypoint"] }
-spl-token-2022 = { version = "^9", features = ["no-entrypoint"]}
+spl-token-2022 = { version = "^9", features = ["no-entrypoint"] }
 spl-associated-token-account = "6"
-litesvm =  { version = "^0.6.1"}
+
+[dev-dependencies]
+tokio = { version = "1.38.0", features = ["full"] }
+env_logger = "0.11.3"
 rand = "0.9.2"
 assert_no_alloc = { version = "1.1.2", default-features = false }
+litesvm = "^0.6.1"
+solana-sdk = "2.2.1"
+solana-sysvar = "2.2.1"
+solana-program-pack = "2.2.1"
+solana-compute-budget = "2.2.1"
+solana-transaction = "2.2.1"
+
+# `litesvm` pulls `solana-secp256r1-program -> openssl`. On macOS the system
+# `libssl` is often missing/arch-mismatched (an arm64 Mac with only x86_64
+# Homebrew), so the test binaries fail to link. Building a static OpenSSL from
+# source (needs `perl`, which ships with macOS) makes `clone && cargo test` work
+# without any machine-global linker flags. Linux keeps its fast system OpenSSL.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 
 # Used only for the construction allocation check. Normal tests, including
 # `quoting_speed`, run under true `--release`.
