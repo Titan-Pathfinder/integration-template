@@ -32,9 +32,9 @@ use spl_token::state::{Account as TokenAccount, AccountState};
 
 use assert_no_alloc::assert_no_alloc;
 
-use titan_integration_template::account_caching::AccountsCache;
-use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
-use titan_integration_template::trading_venue::{
+use quay_titan_integration::account_caching::AccountsCache;
+use quay_titan_integration::account_caching::rpc_cache::RpcClientCache;
+use quay_titan_integration::trading_venue::{
     FromAccount, QuoteRequest, SwapType, TradingVenue,
 };
 

@@ -9,7 +9,7 @@ mod common;
 
 use common::SuiteConfig;
 use solana_pubkey::{Pubkey, pubkey};
-use titan_integration_template::quay::{QUAY_PROGRAM_ID, QuayVenue};
+use quay_titan_integration::quay::{QUAY_PROGRAM_ID, QuayVenue};
 
 // Installs the allocation guard that powers the construction test's
 // `assert_no_alloc` checks. The Makefile runs that test under `release-debug`
