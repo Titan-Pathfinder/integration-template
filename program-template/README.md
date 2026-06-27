@@ -1,20 +1,15 @@
-# Titan V3 Venue Program Template
+# Titan V3 Route Program — Quay venue
 
-Standalone exact-in Anchor template for integrating a venue CPI adapter into
-Titan's router program.
-
-This template focuses on the venue integration surface:
+Exact-in Anchor route program that Titan's router uses to execute routed swaps,
+with the Quay venue CPI adapter wired in.
 
 - `initialize` creates the TitanPDA route signer.
-- `swap_route_v3` validates venue CPI accounts, TitanPDA custody, and route-leg
-  serialization in the same shape Titan's router expects.
-- `instructions/venues/raydium_amm.rs` is a real runnable Raydium AMM CPI example.
-- `instructions/venues/template.rs` is the placeholder adapter to replace or
-  rename when adding your own venue.
+- `swap_route_v3` takes custody through the TitanPDA, validates the venue CPI
+  accounts and route-leg serialization, and CPIs into each leg's venue adapter.
+- `instructions/venues/quay.rs` is the Quay venue adapter — it serializes Quay's
+  exact-in `swap` instruction and forwards the route-assembled account metas.
 
-**To add a venue, follow the checklist in
-`programs/titan-v3-venue-template/src/instructions/venues/README.md`.** To see
-what's still left to fill in, run `make scorecard` from the repo root.
+To see the integration status, run `make scorecard` from the repo root.
 
 ## Build
 
@@ -26,7 +21,7 @@ make build-program
 ## Route Instruction Interface
 
 The entrypoint keeps the single-byte discriminator and exposes only the fields
-needed to exercise Titan router account layout:
+needed to exercise Titan's router account layout:
 
 ```rust
 #[instruction(discriminator = [42])]
@@ -38,15 +33,13 @@ pub fn swap_route_v3<'info>(
 ) -> Result<()>
 ```
 
-This template only models exact-in execution: `amount` is the exact input amount
-the router will spend.
+This program models exact-in execution only: `amount` is the exact input the
+router spends.
 
 ## Remaining Accounts Layout
 
-`swap_route_v3` expects remaining accounts in this order:
-
-Fixed accounts include three optional route slots before `remaining_accounts`.
-Pass this program id for any unused optional slot.
+`swap_route_v3` expects remaining accounts in this order (three optional route
+slots precede them; pass this program id for any unused optional slot):
 
 ```text
 [0..mints]         TitanPDA token accounts, one per route mint
@@ -56,60 +49,54 @@ Pass this program id for any unused optional slot.
 
 For each swap leg:
 
-- `n_accounts` is the number of venue accounts for that leg.
-- `n_accounts` must include the venue program id as the final account.
-- The router passes all `n_accounts` accounts to `invoke_signed`.
-- The router passes only the first `n_accounts - 1` accounts as `AccountMeta`s to the venue module.
+- `n_accounts` is the number of venue accounts for that leg, **including** the
+  venue program id as the final account.
+- The router passes all `n_accounts` accounts to `invoke_signed`, and only the
+  first `n_accounts - 1` as `AccountMeta`s to the venue module.
 
-The off-chain builder `swap_route::build_swap_leg` (in the root crate) assembles
-these for you — clearing the TitanPDA signer flag, appending the venue program id,
-and setting `n_accounts`.
+The off-chain builder `swap_route::build_swap_leg` (root crate) assembles these —
+clearing the TitanPDA signer flag, appending the venue program id, and setting
+`n_accounts`.
 
-## Swap Simulation Test
+## The Quay venue adapter
 
-The template ships a LiteSVM integration test that executes swaps through
-`swap_route_v3` using a venue's off-chain builder and checks the simulated output
-against the venue's quote, in every declared direction. Two entry points run the same
-shared suite (`tests/common/mod.rs`):
-
-- `tests/example_route.rs` — the Raydium AMM reference.
-- `tests/your_venue_route.rs` — your venue (fill in its pool + program id).
-
-They **skip** unless their prerequisites are present: `SOLANA_RPC_URL`, the built
-program binary at `target/deploy/titan_v3_venue_template.so` (from `anchor
-build`), and a dump of each venue program (auto-dumped into `program-dumps/` on
-first run).
-
-```bash
-make build-program
-SOLANA_RPC_URL=<mainnet-rpc-url> cargo test --manifest-path program-template/Cargo.toml --release --test example_route -- --nocapture
-```
-
-Or run the example and your venue suites separately from the repo root with
-`make test-example` and `make test-venue`.
-
-## Raydium AMM Example
-
-`raydium_amm.rs` is intentionally simple and real, and shows the exact
-responsibility of a venue module: serialize the CPI instruction data and forward
-the account metas in the order produced off-chain.
+`instructions/venues/quay.rs` builds Quay's `swap` instruction and forwards the
+metas; the program dispatches `Venue::Quay { sell_base }` to it:
 
 ```rust
-pub const PROGRAM_ID: Pubkey = pubkey!("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
+pub const PROGRAM_ID: Pubkey = pubkey!("QUayE6nexQWYNZAEqfN8FxoNwQDSu3CAzT2qq9J1ArG");
 
-pub fn swap_base_in_v2(
+pub fn swap(
+    sell_base: bool,
     amount_in: u64,
     account_metas: &[AccountMeta],
 ) -> Result<Vec<Instruction>> {
-    let mut data = Vec::with_capacity(17);
-    data.push(16);
+    let side: u8 = if sell_base { 0 } else { 1 };
+    let mut data = Vec::with_capacity(1 + 8 + 8 + 1);
+    data.push(0x20);                                  // swap discriminator
     data.extend_from_slice(&amount_in.to_le_bytes());
-    data.extend_from_slice(&0u64.to_le_bytes());
-
-    Ok(vec![Instruction {
-        program_id: PROGRAM_ID,
-        accounts: account_metas.to_vec(),
-        data,
-    }])
+    data.extend_from_slice(&0u64.to_le_bytes());      // min_amount_out — route-level slippage
+    data.push(side);
+    Ok(vec![Instruction { program_id: PROGRAM_ID, accounts: account_metas.to_vec(), data }])
 }
 ```
+
+`tests/venue_parity.rs` guards that the off-chain `swap_route::Venue` and the
+on-chain `state::Venue` enums serialize identically.
+
+## Swap simulation test
+
+`tests/quay_route.rs` executes swaps through `swap_route_v3` using the off-chain
+builder and checks the simulated output against the venue's quote in every
+declared direction (shared harness in `tests/common/mod.rs`). It **skips** unless
+its prerequisites are present: `SOLANA_RPC_URL`, the built program at
+`target/deploy/titan_v3_venue_template.so` (`make build-program`), and a dump of
+the Quay program (auto-dumped into `program-dumps/` on first run).
+
+```bash
+make build-program
+SOLANA_RPC_URL=<mainnet-rpc-url> \
+  cargo test --manifest-path program-template/Cargo.toml --release --test quay_route -- --nocapture
+```
+
+Or run it from the repo root with `make test-venue`.

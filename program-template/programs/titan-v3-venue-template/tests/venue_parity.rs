@@ -12,18 +12,13 @@ use titan_v3_venue_template::state::Venue as ProgramVenue;
 #[test]
 fn venue_enum_matches_route_builder() {
     let cases = [
-        (ProgramVenue::RaydiumAmm, RouteBuilderVenue::RaydiumAmm),
         (
-            ProgramVenue::TemplateVenue {
-                zero_for_one: false,
-            },
-            RouteBuilderVenue::TemplateVenue {
-                zero_for_one: false,
-            },
+            ProgramVenue::Quay { sell_base: false },
+            RouteBuilderVenue::Quay { sell_base: false },
         ),
         (
-            ProgramVenue::TemplateVenue { zero_for_one: true },
-            RouteBuilderVenue::TemplateVenue { zero_for_one: true },
+            ProgramVenue::Quay { sell_base: true },
+            RouteBuilderVenue::Quay { sell_base: true },
         ),
     ];
 

@@ -13,19 +13,12 @@ use std::fmt::Display;
 /// variants (or add their own) so the router and UI can correctly identify and
 /// categorize the venue.
 ///
-/// `YourPoolProtocol` is provided as a template for new integrators.
-///
 /// Protocols included here:
-/// - `YourPoolProtocol`: Example/custom protocol placeholder.
-/// - `RaydiumAMM`: Raydium’s constant-product AMM on Solana.
+/// - `Quay`: Quay's on-chain DSL-priced market-maker strategies.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PoolProtocol {
-    /// Example/custom protocol — integrators should rename or replace this
-    /// with their own protocol name.
-    YourPoolProtocol,
-
-    /// Raydium’s AMM (x*y=k) pools on Solana.
-    RaydiumAMM,
+    /// Quay market-maker strategies (DSL-priced curves on the Quay program).
+    Quay,
 }
 
 impl Display for PoolProtocol {
@@ -44,8 +37,7 @@ impl From<PoolProtocol> for String {
     /// exposes protocol metadata via API.
     fn from(protocol: PoolProtocol) -> Self {
         match protocol {
-            PoolProtocol::YourPoolProtocol => "YourPoolProtocol".to_string(),
-            PoolProtocol::RaydiumAMM => "RaydiumAMM".to_string(),
+            PoolProtocol::Quay => "Quay".to_string(),
         }
     }
 }

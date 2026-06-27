@@ -7,7 +7,7 @@ use anchor_spl::token_2022::{close_account, CloseAccount, ID as TOKEN_PROGRAM_20
 use anchor_spl::token_interface::{transfer_checked, TransferChecked};
 
 use crate::error::TemplateError;
-use crate::instructions::venues::raydium_amm;
+use crate::instructions::venues::quay;
 use crate::state::{SwapSpecInputV2, TitanPda, Venue, MAX_MINTS, MAX_SWAPS};
 
 #[derive(Accounts)]
@@ -343,13 +343,7 @@ fn perform_cpi_swap<'info>(
     signer_seeds: &[&[&[u8]]],
 ) -> Result<()> {
     let instructions = match swap.venue {
-        Venue::RaydiumAmm => raydium_amm::swap_base_in_v2(amount, account_metas)?,
-        // FILL_IN: add your venue dispatch arm here.
-        Venue::TemplateVenue { zero_for_one } => {
-            // Pass every CPI-specific field from the `Venue` variant into your adapter.
-            let _ = (zero_for_one, amount, account_metas);
-            todo!("replace TemplateVenue dispatch with your venue CPI module")
-        }
+        Venue::Quay { sell_base } => quay::swap(sell_base, amount, account_metas)?,
     };
 
     for instruction in instructions.iter() {

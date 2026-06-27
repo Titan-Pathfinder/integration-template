@@ -1,15 +1,12 @@
-//! Integration scorecard — an always-on, no-RPC report.
+//! Quay integration scorecard — an always-on, no-RPC report.
 //!
-//! The same layer-checkboxes are evaluated
-//! twice: once for the worked **Example** (Raydium — should be all green) and
-//! once for **Your venue**. Which section prints is controlled by the
-//! `SCORECARD_SECTION` env var (`example`, `venue`, or `both`; default `both`),
-//! which the Makefile sets per target.
+//! Prints the four integration layers, any remaining `FILL_IN:` markers, and
+//! whether the on-chain simulation prerequisites are present.
 //!
 //! cargo hides passing-test output unless `--nocapture`. To see the report:
 //!
 //! ```bash
-//! make scorecard                                   # both sections
+//! make scorecard
 //! cargo test --release --test scorecard -- --nocapture
 //! ```
 
@@ -75,28 +72,22 @@ fn fill_in_files() -> Vec<(String, usize)> {
     out
 }
 
-/// Whether the venue program binaries the simulation tests need are dumped.
+/// Whether the Quay program binary the simulation tests need is dumped.
 fn programs_present() -> bool {
-    [
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8.so",
-        "sspUE1vrh7xRoXxGsg7vR1zde2WdGtJRbyK9uRumBDy.so",
-        "ssmbu3KZxgonUtjEMCKspZzxvUQCxAFnyh1rcHUeEDo.so",
-    ]
-    .iter()
-    .all(|p| manifest().join("programs").join(p).exists())
+    manifest()
+        .join("programs")
+        .join("QUayE6nexQWYNZAEqfN8FxoNwQDSu3CAzT2qq9J1ArG.so")
+        .exists()
 }
 
-/// The integration layers, with identical labels for both sections.
+/// The integration layers, with their detail strings.
 const LAYERS: [(&str, &str); 4] = [
     ("Creation parser", "parse_pool_creations() + a fixture test"),
     (
         "Quote layer",
         "implements quote() returning output + a marginal price",
     ),
-    (
-        "Program layer",
-        "on-chain CPI module + a Venue enum variant",
-    ),
+    ("Program layer", "on-chain CPI module + a Venue enum variant"),
     (
         "Route builder",
         "protocol_to_venue mapping + a Venue enum variant",
@@ -110,8 +101,8 @@ fn render_subheader(title: &str) -> String {
     format!("{prefix}{dashes}\n")
 }
 
-fn render_layers(title: &str, done: [bool; 4]) -> String {
-    let mut s = format!("  {title}\n\n");
+fn render_layers(done: [bool; 4]) -> String {
+    let mut s = String::from("  Quay venue:\n\n");
     s.push_str(&render_subheader("Layers"));
     s.push_str("  Status  Layer            Detail\n");
     s.push_str(
@@ -147,7 +138,7 @@ fn render_fill_in(fill_in: &[(String, usize)]) -> String {
 
 fn render_simulation() -> String {
     let (status, detail) = if std::env::var("SOLANA_RPC_URL").is_ok() && programs_present() {
-        ("ENABLED", "SOLANA_RPC_URL set and program dumps present")
+        ("ENABLED", "SOLANA_RPC_URL set and the Quay program dump present")
     } else {
         ("SKIPPED", "set SOLANA_RPC_URL and run `make dump-programs`")
     };
@@ -158,7 +149,7 @@ fn render_simulation() -> String {
     )
 }
 
-fn render_summary(title: &str, done: [bool; 4]) -> String {
+fn render_summary(done: [bool; 4]) -> String {
     let count = done.iter().filter(|d| **d).count();
     let detail = if done.iter().all(|d| *d) {
         "all wired, run the sim tests to validate"
@@ -167,8 +158,9 @@ fn render_summary(title: &str, done: [bool; 4]) -> String {
     };
 
     format!(
-        "\n{}  Target      Status             Detail\n  ----------  -----------------  ------------------------------------------------------------\n  {title:<10}  {count}/4 layers wired  {detail}\n",
-        render_subheader("Summary")
+        "\n{}  Target      Status             Detail\n  ----------  -----------------  ------------------------------------------------------------\n  {:<10}  {count}/4 layers wired  {detail}\n",
+        render_subheader("Summary"),
+        "Quay venue"
     )
 }
 
@@ -178,81 +170,40 @@ fn integration_scorecard() {
 
     // Structural integrity: every layer file must exist.
     for f in [
-        "src/example/mod.rs",
-        "src/your_venue/mod.rs",
+        "src/quay/mod.rs",
         "src/swap_route/mod.rs",
-        "tests/venue_creation.rs",
-        "tests/your_venue_creation.rs",
+        "tests/quay_creation.rs",
         &format!("{PROGRAM_SRC}/state.rs"),
+        &format!("{PROGRAM_SRC}/instructions/venues/quay.rs"),
     ] {
-        assert!(
-            !read(f).is_empty(),
-            "integration layer missing or empty: {f}"
-        );
+        assert!(!read(f).is_empty(), "integration layer missing or empty: {f}");
     }
 
-    let example = read("src/example/mod.rs");
-    let raydium_cpi = read(&format!("{PROGRAM_SRC}/instructions/venues/raydium_amm.rs"));
+    let quay = read("src/quay/mod.rs");
+    let quay_cpi = read(&format!("{PROGRAM_SRC}/instructions/venues/quay.rs"));
     let swap_route = read("src/swap_route/mod.rs");
     let state = read(&format!("{PROGRAM_SRC}/state.rs"));
-    let template_venue = read(&format!("{PROGRAM_SRC}/instructions/venues/template.rs"));
-    let your_venue = read("src/your_venue/mod.rs");
-    let venue_creation = read("tests/venue_creation.rs");
-    let your_venue_creation = read("tests/your_venue_creation.rs");
+    let quay_creation = read("tests/quay_creation.rs");
 
-    // Same layers, evaluated for the reference example...
-    let example_done = [
-        example.contains("fn parse_pool_creations")
-            && venue_creation.contains("parses_raydium_pool_creation"),
-        example.contains("fn quote") && example.contains("fn price"),
-        !raydium_cpi.is_empty() && state.contains("RaydiumAmm"),
-        swap_route.contains("PoolProtocol::RaydiumAMM") && swap_route.contains("Venue::RaydiumAmm"),
+    let done = [
+        quay.contains("fn parse_pool_creations")
+            && quay_creation.contains("parses_quay_pool_creation"),
+        quay.contains("fn quote") && quay.contains("price"),
+        !quay_cpi.is_empty() && state.contains("Venue") && state.contains("Quay"),
+        swap_route.contains("PoolProtocol::Quay") && swap_route.contains("Venue::Quay"),
     ];
-    // ...and for your venue (placeholders replaced / stub implemented).
-    let venue_done = [
-        !your_venue.contains("YourVenue::parse_pool_creations")
-            && !your_venue_creation.contains("FILL_IN:")
-            && !your_venue_creation.contains("todo!("),
-        !your_venue.contains("todo!("),
-        !state.contains("TemplateVenue")
-            && !template_venue.contains("11111111111111111111111111111111"),
-        !swap_route.contains("TemplateVenue"),
-    ];
-
-    let section = std::env::var("SCORECARD_SECTION").unwrap_or_else(|_| "both".into());
-    let show_example = section != "venue";
-    let show_venue = section != "example";
 
     let mut report = String::new();
-    report.push_str("\n================ Titan integration scorecard ================\n\n");
-
-    if show_example {
-        report.push_str(&render_layers(
-            "Example (reference — should be all green):",
-            example_done,
-        ));
-        report.push_str(&render_summary("Example", example_done));
-        if show_venue {
-            report.push('\n');
-        }
-    }
-
-    if show_venue {
-        report.push_str(&render_layers("Your venue (fill these in):", venue_done));
-
-        let fill_in = fill_in_files();
-        report.push_str(&render_fill_in(&fill_in));
-        report.push_str(&render_simulation());
-        report.push_str(&render_summary("Your venue", venue_done));
-    }
-
+    report.push_str("\n================ Quay integration scorecard =================\n\n");
+    report.push_str(&render_layers(done));
+    report.push_str(&render_fill_in(&fill_in_files()));
+    report.push_str(&render_simulation());
+    report.push_str(&render_summary(done));
     report.push_str("=============================================================\n");
     println!("{report}");
 
-    // The reference example is a regression guard: it must always be complete.
     assert!(
-        example_done.iter().all(|d| *d),
-        "the reference (example) integration is incomplete or broken — its layers \
-         should all be wired",
+        done.iter().all(|d| *d),
+        "a Quay integration layer is not wired — see the [ ] rows above",
     );
 }
