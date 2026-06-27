@@ -6,7 +6,7 @@ mod common;
 
 use common::{RouteConfig, run_swap_route};
 use solana_pubkey::Pubkey;
-use titan_integration_template::quay::QuayVenue;
+use quay_titan_integration::quay::QuayVenue;
 
 /// A live, Titan-routed Quay strategy on mainnet (same one `tests/quay.rs`
 /// quotes against). The route program CPIs into Quay's `swap` to fill the leg.
@@ -17,7 +17,7 @@ fn pool() -> Pubkey {
 /// The Quay program. SPL Token, Token-2022, and the System program are LiteSVM
 /// builtins, so only Quay's own binary must be dumped to `programs/<id>.so`.
 fn venue_programs() -> Vec<Pubkey> {
-    vec![titan_integration_template::quay::QUAY_PROGRAM_ID]
+    vec![quay_titan_integration::quay::QUAY_PROGRAM_ID]
 }
 
 #[tokio::test]

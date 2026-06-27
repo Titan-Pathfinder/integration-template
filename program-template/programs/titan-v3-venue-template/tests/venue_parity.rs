@@ -6,7 +6,7 @@
 //! and to the `cases` list below.
 
 use anchor_lang::AnchorSerialize;
-use titan_integration_template::swap_route::Venue as RouteBuilderVenue;
+use quay_titan_integration::swap_route::Venue as RouteBuilderVenue;
 use titan_v3_venue_template::state::Venue as ProgramVenue;
 
 #[test]

@@ -30,11 +30,6 @@ anchor-spl = "0.31.1"
 [dev-dependencies]
 borsh = "0.10.4"
 env_logger = "0.11.3"
-# `solana-sdk` pulls `solana-secp256r1-program -> openssl`; the `vendored`
-# feature builds a static OpenSSL from source so the route-test host binaries
-# link on machines without a matching system `libssl` (e.g. an arm64 Mac with
-# only an x86_64 Homebrew). Test-only — never compiled into the on-chain program.
-openssl = { version = "0.10", features = ["vendored"] }
 litesvm = "^0.6.1"
 log = "0.4.28"
 solana-account = "2.2.1"
@@ -50,5 +45,12 @@ solana-transaction = "2.2.1"
 spl-associated-token-account = "6"
 spl-token = { version = "7", features = ["no-entrypoint"] }
 spl-token-2022 = { version = "^9", features = ["no-entrypoint"] }
-titan-integration-template = { path = "../../.." }
+quay-titan-integration = { path = "../../.." }
 tokio = { version = "1.38.0", features = ["full"] }
+
+# `litesvm`/`solana-sdk` pull `solana-secp256r1-program -> openssl`. On macOS the
+# system `libssl` is often missing/arch-mismatched, so build a static OpenSSL
+# from source (needs `perl`) for the route-test host binaries. Test-only — never
+# compiled into the on-chain program. Linux keeps its fast system OpenSSL.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+openssl = { version = "0.10", features = ["vendored"] }

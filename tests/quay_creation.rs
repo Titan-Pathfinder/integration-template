@@ -6,9 +6,9 @@
 
 use solana_pubkey::{Pubkey, pubkey};
 
-use titan_integration_template::trading_venue::protocol::PoolProtocol;
-use titan_integration_template::trading_venue::venue_creation::{ParsedInstruction, PoolCreation};
-use titan_integration_template::quay::{QUAY_PROGRAM_ID, parse_pool_creations};
+use quay_titan_integration::trading_venue::protocol::PoolProtocol;
+use quay_titan_integration::trading_venue::venue_creation::{ParsedInstruction, PoolCreation};
+use quay_titan_integration::quay::{QUAY_PROGRAM_ID, parse_pool_creations};
 
 /// `init_strategy` discriminator — the first data byte the parser keys on
 /// (`quay_sdk::consts::DISC_INIT_STRATEGY`).

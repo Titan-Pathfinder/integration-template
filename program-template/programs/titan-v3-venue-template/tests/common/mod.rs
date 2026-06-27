@@ -32,14 +32,14 @@ use solana_sysvar::clock::{self, Clock};
 use solana_transaction::Transaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as TokenAccount, AccountState};
-use titan_integration_template::account_caching::AccountsCache;
-use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
-use titan_integration_template::swap_route::{
+use quay_titan_integration::account_caching::AccountsCache;
+use quay_titan_integration::account_caching::rpc_cache::RpcClientCache;
+use quay_titan_integration::swap_route::{
     ROUTE_WEIGHT_ALL, build_swap_leg, encode_swap_route_v3_data,
 };
-use titan_integration_template::trading_venue::error::TradingVenueError;
-use titan_integration_template::trading_venue::token_info::TokenInfo;
-use titan_integration_template::trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue};
+use quay_titan_integration::trading_venue::error::TradingVenueError;
+use quay_titan_integration::trading_venue::token_info::TokenInfo;
+use quay_titan_integration::trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue};
 use titan_v3_venue_template::state::TitanPda;
 
 const SAMPLE_COUNT: usize = 10;
