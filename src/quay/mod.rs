@@ -257,14 +257,6 @@ impl QuayVenue {
             && self.mm_halted_admin == 0
     }
 
-    /// Did `update_state` find a `TransferFeeConfig` extension on either
-    /// mint? The on-chain `swap` doesn't subtract the fee from `amount_in`
-    /// before pricing, so a transfer-fee'd mint mis-quotes — refuse the
-    /// venue until the program is taught to net the fee.
-    fn any_transfer_fee(&self) -> bool {
-        self.tokens.iter().any(|t| t.transfer_fee.is_some())
-    }
-
     /// Look up the token-program owner for one of the strategy's mints.
     fn token_program_for(&self, mint: &Pubkey) -> Option<Pubkey> {
         self.tokens
@@ -400,21 +392,17 @@ pub fn parse_pool_creations(instructions: &[ParsedInstruction]) -> Vec<PoolCreat
 #[async_trait]
 impl TradingVenue for QuayVenue {
     fn initialized(&self) -> bool {
-        // Four gates Titan's route planner uses to skip the venue:
+        // Three gates Titan's route planner uses to skip the venue:
         //   1. the MM opted this strategy into Titan (`routing_flags & ROUTE_TITAN`),
         //   2. all account blobs populated (post-first-update),
         //   3. on-chain halt / freeze set clear (the same flags the swap
-        //      handler checks — see `onchain/program/src/instructions/swap.rs`),
-        //   4. neither mint carries a Token-2022 `TransferFeeConfig`
-        //      extension (the on-chain swap prices `amount_in` gross and
-        //      would short-fill against the curve's quoted output).
+        //      handler checks — see `onchain/program/src/instructions/swap.rs`).
         // Stateful curves are routed too: `quote()` prices them allocation-free
         // on a stack buffer (see `quote`), and the on-chain `min_amount_out`
         // guard bounds any quote/fill drift to a reverted route, not a loss.
         self.routing_flags & ROUTE_TITAN != 0
             && self.has_all_state()
             && self.halts_clear()
-            && !self.any_transfer_fee()
     }
 
     fn program_id(&self) -> Pubkey {
@@ -579,13 +567,12 @@ impl TradingVenue for QuayVenue {
         };
 
         // Mirror `initialized()`: Titan-routed AND state populated AND halts
-        // clear AND no transfer-fee mints. The simulator would also reject on
-        // the halt bytes (`client/sdk/src/simulate.rs`), but failing here gives
-        // the router a single canonical "not initialized" surface to skip.
+        // clear. The simulator would also reject on the halt bytes
+        // (`client/sdk/src/simulate.rs`), but failing here gives the router a
+        // single canonical "not initialized" surface to skip.
         if self.routing_flags & ROUTE_TITAN == 0
             || !self.has_all_state()
             || !self.halts_clear()
-            || self.any_transfer_fee()
         {
             return Err(TradingVenueError::NotInitialized(self.strategy_key.into()));
         }
@@ -605,20 +592,22 @@ impl TradingVenue for QuayVenue {
             .map(|t| t.decimals as u8)
             .ok_or_else(|| TradingVenueError::MissingState("quote TokenInfo".into()))?;
 
-        // `f(x)` = output atoms for an `x`-atom swap, priced into a reused stack
-        // scratch buffer so `quote()` performs **no heap allocation** for any
-        // curve. `MAX_USERSPACE_LEN` (16 KiB) is the program's hard userspace
-        // cap, so the buffer fits any strategy. Clock comes from the `Clock`
-        // sysvar fetched in `update_state` (or a `with_clock` override).
+        // `simulate_out(x)` = output atoms for an `x`-atom swap, priced into a
+        // reused stack scratch buffer so `quote()` performs **no heap
+        // allocation** for any curve. `MAX_USERSPACE_LEN` (16 KiB) is the
+        // program's hard userspace cap, so the buffer fits any strategy. Clock
+        // comes from the `Clock` sysvar fetched in `update_state` (or a
+        // `with_clock` override).
         let mut scratch = [0u8; MAX_USERSPACE_LEN as usize];
-        // `f(x)` = output atoms for an `x`-atom swap, or `None` when the curve
-        // refuses that size (over inventory, or the side is rejected). It returns
-        // `Option`, not `Result`, on purpose: the boundary search probes refused
-        // sizes under `assert_no_alloc`, so the refusal path must not allocate an
-        // error string. A genuine `Err` from the simulator is indistinguishable
-        // from "refused" at this point (malformed state is already rejected in
-        // `update_state`), and both mean "not quotable at this size".
-        let mut f = |amt: u64| -> Option<u64> {
+        // `simulate_out(x)` = output atoms for an `x`-atom swap, or `None` when
+        // the curve refuses that size (over inventory, or the side is rejected).
+        // It returns `Option`, not `Result`, on purpose: the boundary search
+        // probes refused sizes under `assert_no_alloc`, so the refusal path must
+        // not allocate an error string. A genuine `Err` from the simulator is
+        // indistinguishable from "refused" at this point (malformed state is
+        // already rejected in `update_state`), and both mean "not quotable at
+        // this size".
+        let mut simulate_out = |amt: u64| -> Option<u64> {
             simulate_swap_in(
                 SwapSimulationInputs {
                     strategy_data: &self.strategy_data,
@@ -654,7 +643,7 @@ impl TradingVenue for QuayVenue {
         if request.amount == 0 {
             let mut p = probe;
             let price = loop {
-                match f(p) {
+                match simulate_out(p) {
                     Some(out) => break out as f64 / p as f64,
                     None if p > 1 => p = (p / 16).max(1),
                     None => break 0.0,
@@ -671,7 +660,7 @@ impl TradingVenue for QuayVenue {
         }
 
         let a = request.amount;
-        let Some(out) = f(a) else {
+        let Some(out) = simulate_out(a) else {
             // The curve refuses this size. Signal "not enough liquidity" (the
             // designed Titan flag) instead of an allocating error — the boundary
             // search relies on this and runs under `assert_no_alloc`.
@@ -711,9 +700,9 @@ impl TradingVenue for QuayVenue {
         let h = ((PRICE_PROBE_OUT * u128::from(a)) / u128::from(out.max(1)))
             .min(u128::from(u64::MAX)) as u64;
         let h = h.max(1);
-        let price = match f(a.saturating_add(h)) {
+        let price = match simulate_out(a.saturating_add(h)) {
             Some(up) if up > out => (up - out) as f64 / h as f64,
-            _ => match f(a.saturating_sub(h)) {
+            _ => match simulate_out(a.saturating_sub(h)) {
                 Some(down) if out > down => (out - down) as f64 / h as f64,
                 _ => out as f64 / a as f64, // flat / sub-granular: average rate (always > 0)
             },
@@ -884,17 +873,16 @@ mod tests {
         assert_eq!(ts, -1);
     }
 
-    /// Build a `QuayVenue` with every halt / freeze byte cleared and no
-    /// transfer-fee mints — `halts_clear()` returns true,
-    /// `any_transfer_fee()` returns false, and (once state blobs are
-    /// populated) `initialized()` returns true.
+    /// Build a `QuayVenue` with every halt / freeze byte cleared —
+    /// `halts_clear()` returns true, and (once state blobs are populated)
+    /// `initialized()` returns true.
     fn all_active_venue() -> QuayVenue {
         QuayVenue {
             program_id: Pubkey::new_unique(),
             strategy_key: Pubkey::new_unique(),
             // Non-empty so `has_all_state()` passes — content doesn't
             // matter for the halt-gate tests since they exercise
-            // `halts_clear()` / `any_transfer_fee()` directly.
+            // `halts_clear()` directly.
             strategy_data: vec![0u8; 1],
             mm_key: Pubkey::new_unique(),
             mm_data: vec![0u8; 1],
@@ -959,22 +947,6 @@ mod tests {
         let mut venue = all_active_venue();
         venue.mm_data.clear();
         assert!(!venue.initialized(), "empty mm_data should fail initialized()");
-    }
-
-    #[test]
-    fn initialized_false_when_transfer_fee_present() {
-        let mut venue = all_active_venue();
-        venue.tokens = vec![TokenInfo {
-            pubkey: venue.base_mint,
-            decimals: 6,
-            is_token_2022: true,
-            transfer_fee: Some(25),
-            maximum_fee: Some(0),
-        }];
-        assert!(
-            !venue.initialized(),
-            "transfer-fee mint in tokens should fail initialized()"
-        );
     }
 
     #[test]
