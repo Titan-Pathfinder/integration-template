@@ -49,15 +49,12 @@ pub const ROUTE_WEIGHT_ALL: u32 = 1_000_000_000;
 #[derive(BorshSerialize, BorshDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Venue {
     RaydiumAmm,
-    // FILL_IN: add your venue variant here, in the SAME position as in
-    // `state.rs`. Include any CPI parameters the router must pass to your venue
-    // adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
-}
-
-#[allow(dead_code)]
-fn fill_in_route_venue_variant() -> ! {
-    todo!("add your route Venue variant in the same position as the program enum")
+    /// Exact quoted v3 instruction, including output, deadline and revision guards.
+    Ocelot {
+        data: [u8; 160],
+        len: u8,
+        quoted_input: u64,
+    },
 }
 
 impl Venue {
@@ -94,12 +91,33 @@ pub fn protocol_to_venue(
     venue: &dyn TradingVenue,
     request: &QuoteRequest,
 ) -> Result<Venue, TradingVenueError> {
-    match venue.protocol() {
+    if venue.protocol() == PoolProtocol::RaydiumAMM {
+        return Ok(Venue::RaydiumAmm);
+    }
+    let ix = venue.generate_swap_instruction(request.clone(), Pubkey::default())?;
+    protocol_instruction_to_venue(venue.protocol(), request.amount, &ix)
+}
+
+fn protocol_instruction_to_venue(
+    protocol: PoolProtocol,
+    amount: u64,
+    ix: &Instruction,
+) -> Result<Venue, TradingVenueError> {
+    match protocol {
         PoolProtocol::RaydiumAMM => Ok(Venue::RaydiumAmm),
-        // FILL_IN: map your PoolProtocol variant to your Venue variant.
-        PoolProtocol::YourPoolProtocol => {
-            let _ = (venue, request);
-            todo!("map YourPoolProtocol to your Venue variant")
+        PoolProtocol::Ocelot => {
+            if ix.data.len() > 160 {
+                return Err(TradingVenueError::AmmMethodError(
+                    "Ocelot instruction too large".into(),
+                ));
+            }
+            let mut data = [0; 160];
+            data[..ix.data.len()].copy_from_slice(&ix.data);
+            Ok(Venue::Ocelot {
+                data,
+                len: ix.data.len() as u8,
+                quoted_input: amount,
+            })
         }
     }
 }
@@ -130,11 +148,12 @@ pub fn build_swap_leg(
     let accounts = assemble_leg_accounts(&swap_ix, titan_pda, venue.program_id());
 
     let spec = SwapSpecInputV2 {
-        venue: protocol_to_venue(venue, request)?,
+        venue: protocol_instruction_to_venue(venue.protocol(), request.amount, &swap_ix)?,
         from,
         to,
         weight_nanos,
-        n_accounts: accounts.len() as u8,
+        n_accounts: u8::try_from(accounts.len())
+            .map_err(|_| TradingVenueError::AmmMethodError("too many route accounts".into()))?,
     };
 
     Ok((spec, accounts))
@@ -341,16 +360,15 @@ mod tests {
     #[test]
     fn venue_borsh_bytes_are_stable() {
         assert_eq!(Venue::RaydiumAmm.to_borsh_bytes(), vec![0]);
-        assert_eq!(
-            Venue::TemplateVenue {
-                zero_for_one: false,
-            }
-            .to_borsh_bytes(),
-            vec![1, 0]
-        );
-        assert_eq!(
-            Venue::TemplateVenue { zero_for_one: true }.to_borsh_bytes(),
-            vec![1, 1]
-        );
+        let encoded = Venue::Ocelot {
+            data: [0; 160],
+            len: 148,
+            quoted_input: 123,
+        }
+        .to_borsh_bytes();
+        assert_eq!(encoded.len(), 170);
+        assert_eq!(encoded[0], 1);
+        assert_eq!(encoded[161], 148);
+        assert_eq!(&encoded[162..], &123u64.to_le_bytes());
     }
 }

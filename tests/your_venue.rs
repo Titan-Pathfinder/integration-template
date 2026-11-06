@@ -1,10 +1,7 @@
-//! Your venue's test suite — the same shared assertions the example passes, run
-//! against `YourVenue`. On a fresh template these are red (the `YourVenue`
-//! methods are `todo!()`); implement `src/your_venue/mod.rs` and fill in the
-//! config below to turn them green.
-//!
-//! Like the example suite, the tests SKIP when `SOLANA_RPC_URL` (and, for the
-//! simulations, dumped program binaries) are absent.
+//! Titan's unmodified shared acceptance assertions, wired to Ocelot.
+//! These are NOT passing acceptance tests: quote() intentionally returns an error
+//! until Titan's execution/curve contract is resolved. With no RPC they SKIP.
+//! Offline execution evidence lives in ocelot_replay.rs.
 
 mod common;
 
@@ -20,14 +17,16 @@ use titan_integration_template::your_venue::YourVenue;
 static A: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
 
 fn pool() -> Pubkey {
-    // FILL_IN: a real pool/market account for your venue to quote.
-    todo!("set tests/your_venue.rs pool to a real pool or market account")
+    Pubkey::from_str_const("AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM")
 }
 
 fn programs() -> Vec<Pubkey> {
-    // FILL_IN: your program plus any runtime-dependency programs the swap CPI
-    // touches. Dump each to programs/<id>.so via `make dump-programs`.
-    todo!("set tests/your_venue.rs programs to your venue program dependencies")
+    // Current Phoenix needs the newer replay runtime in ocelot_replay.rs.
+    vec![
+        titan_integration_template::ocelot::PROGRAM_ID,
+        titan_integration_template::ocelot::PHOENIX,
+        titan_integration_template::ocelot::EMBER,
+    ]
 }
 
 fn config() -> SuiteConfig {

@@ -26,10 +26,10 @@ pub const TOKEN_2022_PROGRAM_ID: Pubkey = spl_token_2022::ID;
 ///
 /// This includes metadata derived from the mint account such as:
 ///
-/// - The mint's public key  
-/// - Decimals (UI precision)  
-/// - Whether the mint uses Token-2022  
-/// - Optional transfer-fee configuration  
+/// - The mint's public key
+/// - Decimals (UI precision)
+/// - Whether the mint uses Token-2022
+/// - Optional transfer-fee configuration
 ///
 /// Titan venues expose an array/slice of `TokenInfo` to describe the tokens
 /// they support on a per-pool basis.
@@ -45,9 +45,9 @@ pub struct TokenInfo {
     pub is_token_2022: bool,
 
     /// Transfer-fee basis points (if the mint includes a TransferFee extension).
-    ///  
+    ///
     /// Value is in **basis points**, i.e. 1/100th of a percent.
-    ///  
+    ///
     /// Example: 25 → 0.25% fee.
     pub transfer_fee: Option<u16>,
 
@@ -63,9 +63,9 @@ impl TokenInfo {
     /// `transfer_fee` and `maximum_fee` remain `None`.
     ///
     /// # Arguments
-    /// - `pubkey` — the mint address  
-    /// - `account` — the raw Solana account containing mint data  
-    /// - `epoch` — the current epoch, used for fetching epoch-indexed fee values  
+    /// - `pubkey` — the mint address
+    /// - `account` — the raw Solana account containing mint data
+    /// - `epoch` — the current epoch, used for fetching epoch-indexed fee values
     ///
     /// # Errors
     /// Returns `TradingVenueError::DeserializationFailed` if the mint account

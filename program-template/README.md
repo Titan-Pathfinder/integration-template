@@ -9,12 +9,11 @@ This template focuses on the venue integration surface:
 - `swap_route_v3` validates venue CPI accounts, TitanPDA custody, and route-leg
   serialization in the same shape Titan's router expects.
 - `instructions/venues/raydium_amm.rs` is a real runnable Raydium AMM CPI example.
-- `instructions/venues/template.rs` is the placeholder adapter to replace or
-  rename when adding your own venue.
+- `instructions/venues/ocelot.rs` is the guarded Ocelot v3 mint/redeem adapter.
+  The production quote model is unresolved; see the [integration status](../README.md).
 
-**To add a venue, follow the checklist in
-`programs/titan-v3-venue-template/src/instructions/venues/README.md`.** To see
-what's still left to fill in, run `make scorecard` from the repo root.
+The remaining sections describe the upstream template interface. The local enum
+is not Titan's production ABI; Titan must assign the actual variant before rollout.
 
 ## Build
 

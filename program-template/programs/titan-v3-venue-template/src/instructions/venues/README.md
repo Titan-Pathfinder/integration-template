@@ -1,5 +1,9 @@
 # Venue Modules
 
+Ocelot is implemented in `ocelot.rs` with pinned input and v3 output/deadline/finance
+guards. The generic checklist below is retained from the upstream template for
+future adapters; it does not represent unfinished Ocelot CPI stubs.
+
 This directory contains the venue CPI adapters called by Titan's router program.
 Titan routes exact-in swaps only.
 

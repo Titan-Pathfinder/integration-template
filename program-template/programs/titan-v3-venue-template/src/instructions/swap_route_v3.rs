@@ -344,12 +344,17 @@ fn perform_cpi_swap<'info>(
 ) -> Result<()> {
     let instructions = match swap.venue {
         Venue::RaydiumAmm => raydium_amm::swap_base_in_v2(amount, account_metas)?,
-        // FILL_IN: add your venue dispatch arm here.
-        Venue::TemplateVenue { zero_for_one } => {
-            // Pass every CPI-specific field from the `Venue` variant into your adapter.
-            let _ = (zero_for_one, amount, account_metas);
-            todo!("replace TemplateVenue dispatch with your venue CPI module")
-        }
+        Venue::Ocelot {
+            data,
+            len,
+            quoted_input,
+        } => crate::instructions::venues::ocelot::swap(
+            &data,
+            len,
+            quoted_input,
+            amount,
+            account_metas,
+        )?,
     };
 
     for instruction in instructions.iter() {

@@ -1,67 +1,52 @@
-//! Your venue's venue-creation parsing test.
-//!
-//! Fill this in with a self-contained fixture for your venue's pool-creation
-//! instruction. It should mirror `tests/venue_creation.rs`: no RPC, no network,
-//! just the decompiled instruction shape that your parser must recognize.
-
-use solana_pubkey::{Pubkey, pubkey};
-
-use titan_integration_template::trading_venue::protocol::PoolProtocol;
-use titan_integration_template::trading_venue::venue_creation::{ParsedInstruction, PoolCreation};
-use titan_integration_template::your_venue::{YOUR_PROGRAM_ID, parse_pool_creations};
-
-// FILL_IN: replace with a real pool address created by your fixture instruction.
-const POOL: Pubkey = pubkey!("11111111111111111111111111111111");
-// FILL_IN: replace with the first tradable mint from the new pool.
-const TOKEN_A_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
-// FILL_IN: replace with the second tradable mint from the new pool.
-const TOKEN_B_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
-
-fn require_fixture_constants_replaced() {
-    if POOL == Pubkey::default() {
-        todo!("replace POOL with a real pool address created by your fixture")
-    }
-    if TOKEN_A_MINT == Pubkey::default() || TOKEN_B_MINT == Pubkey::default() {
-        todo!("replace TOKEN_A_MINT and TOKEN_B_MINT with real tradable mints")
-    }
-}
-
-fn your_venue_pool_creation() -> ParsedInstruction {
-    // FILL_IN: build your venue's real pool-creation instruction fixture.
-    // Match the program id, discriminator, account order, and data layout your
-    // parser expects. Include the new pool and mint accounts at their real
-    // instruction positions.
-    todo!("build YourVenue pool-creation instruction fixture")
-}
-
-fn unrelated_instruction() -> ParsedInstruction {
-    ParsedInstruction {
-        program_id: YOUR_PROGRAM_ID,
-        accounts: vec![],
-        data: vec![],
-    }
-}
+//! ABI fixture using the real SOL3L addresses. Authored from InitMarket,
+//! not claimed to be a captured creation transaction.
+use solana_pubkey::Pubkey;
+use titan_integration_template::{
+    ocelot::{self, PROGRAM_ID, USDC},
+    trading_venue::{
+        protocol::PoolProtocol,
+        venue_creation::{ParsedInstruction, PoolCreation},
+    },
+};
 
 #[test]
-fn parses_your_venue_pool_creation() {
-    require_fixture_constants_replaced();
-    let creations = parse_pool_creations(&[your_venue_pool_creation()]);
-
+fn parses_ocelot_creation_and_ignores_other_instructions() {
+    let id = 62030u16;
+    let pool = Pubkey::from_str_const("AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM");
+    let mint = Pubkey::from_str_const("BYSvVfnjCh3xzLoCnMbFNnrz331SBMdL7XymyycPSvFv");
+    let mut data = ocelot::discriminator("global:init_market").to_vec();
+    data.extend(id.to_le_bytes());
+    data.extend([0, 2, 3, 1, 0]);
+    for fee in [100u16, 30, 10, 0] {
+        data.extend(fee.to_le_bytes());
+    }
+    data.extend(1_000_000u64.to_le_bytes());
+    let accounts = vec![
+        pool,
+        USDC,
+        mint,
+        Pubkey::find_program_address(&[b"coll", &id.to_le_bytes()], &PROGRAM_ID).0,
+        Pubkey::find_program_address(&[b"fee", &id.to_le_bytes()], &PROGRAM_ID).0,
+        Pubkey::new_unique(),
+        solana_sdk_ids::system_program::ID,
+        spl_token::ID,
+        solana_sdk_ids::sysvar::rent::ID,
+        ocelot::global_bucket(),
+    ];
+    let ix = ParsedInstruction {
+        program_id: PROGRAM_ID,
+        accounts,
+        data,
+    };
     assert_eq!(
-        creations,
+        ocelot::parse_pool_creations(std::slice::from_ref(&ix)),
         vec![PoolCreation {
-            protocol: PoolProtocol::YourPoolProtocol,
-            pool: POOL,
-            mints: vec![TOKEN_A_MINT, TOKEN_B_MINT],
-        }],
+            protocol: PoolProtocol::Ocelot,
+            pool,
+            mints: vec![USDC, mint]
+        }]
     );
-}
-
-#[test]
-fn ignores_transactions_without_a_creation() {
-    let creations = parse_pool_creations(&[unrelated_instruction()]);
-    assert!(
-        creations.is_empty(),
-        "a transaction without a pool creation creates no pools, got {creations:?}"
-    );
+    let mut unrelated = ix;
+    unrelated.data[..8].copy_from_slice(&ocelot::discriminator("global:phoenix_mint_v3"));
+    assert!(ocelot::parse_pool_creations(&[unrelated]).is_empty());
 }

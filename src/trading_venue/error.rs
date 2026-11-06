@@ -25,8 +25,8 @@ use crate::{account_caching::AccountCacheError, trading_venue::protocol::PoolPro
 /// all those representations in a unified, displayable type.
 ///
 /// Variants:
-/// - `Pubkey` — attach a specific Solana account address  
-/// - `String` — arbitrary owned string describing the error  
+/// - `Pubkey` — attach a specific Solana account address
+/// - `String` — arbitrary owned string describing the error
 /// - `StaticStr` — lightweight static string reference
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorInfo {
@@ -79,37 +79,37 @@ impl Display for ErrorInfo {
 ///
 /// Error variants fall into several categories:
 ///
-/// **Account/State issues**  
-/// - `NoAccountFound`  
-/// - `FailedToFetchAccountData`  
-/// - `FailedToFetchMultipleAccountData`  
-/// - `DeserializationFailed`  
-/// - `MissingState`  
+/// **Account/State issues**
+/// - `NoAccountFound`
+/// - `FailedToFetchAccountData`
+/// - `FailedToFetchMultipleAccountData`
+/// - `DeserializationFailed`
+/// - `MissingState`
 /// - `NotInitialized`
 ///
-/// **Mint / token issues**  
-/// - `InvalidMint`  
-/// - `TokenInfoIndexError`  
+/// **Mint / token issues**
+/// - `InvalidMint`
+/// - `TokenInfoIndexError`
 ///
-/// **Math issues**  
-/// - `CheckedMathError`  
-/// - `MathError`  
+/// **Math issues**
+/// - `CheckedMathError`
+/// - `MathError`
 ///
-/// **Swap/venue behavior issues**  
-/// - `AmmMethodError`  
-/// - `ExactOutNotSupported`  
-/// - `UnsupportedVenue`  
+/// **Swap/venue behavior issues**
+/// - `AmmMethodError`
+/// - `ExactOutNotSupported`
+/// - `UnsupportedVenue`
 /// - `InactivePoolError`
 ///
-/// **Boundary search & quoting issues**  
-/// - `BoundarySearchFailed`  
+/// **Boundary search & quoting issues**
+/// - `BoundarySearchFailed`
 /// - `NoQuotableValue`
 ///
-/// **Internal/unexpected issues**  
-/// - `SomethingWentWrong` (boxed error for unexpected failures)  
+/// **Internal/unexpected issues**
+/// - `SomethingWentWrong` (boxed error for unexpected failures)
 ///
-/// **Infrastructure issues**  
-/// - `CacheUnlockFailed`  
+/// **Infrastructure issues**
+/// - `CacheUnlockFailed`
 /// - `AccountCacheError` (converted via `#[from]`)
 #[allow(clippy::large_enum_variant)]
 #[derive(Error, Debug)]

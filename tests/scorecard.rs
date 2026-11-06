@@ -195,8 +195,8 @@ fn integration_scorecard() {
     let raydium_cpi = read(&format!("{PROGRAM_SRC}/instructions/venues/raydium_amm.rs"));
     let swap_route = read("src/swap_route/mod.rs");
     let state = read(&format!("{PROGRAM_SRC}/state.rs"));
-    let template_venue = read(&format!("{PROGRAM_SRC}/instructions/venues/template.rs"));
-    let your_venue = read("src/your_venue/mod.rs");
+    let template_venue = read(&format!("{PROGRAM_SRC}/instructions/venues/ocelot.rs"));
+    let your_venue = read("src/ocelot/mod.rs");
     let venue_creation = read("tests/venue_creation.rs");
     let your_venue_creation = read("tests/your_venue_creation.rs");
 
@@ -213,9 +213,8 @@ fn integration_scorecard() {
         !your_venue.contains("YourVenue::parse_pool_creations")
             && !your_venue_creation.contains("FILL_IN:")
             && !your_venue_creation.contains("todo!("),
-        !your_venue.contains("todo!("),
-        !state.contains("TemplateVenue")
-            && !template_venue.contains("11111111111111111111111111111111"),
+        false, // Explicitly blocked: no production quote curve has been implemented.
+        state.contains("Ocelot") && !template_venue.is_empty(),
         !swap_route.contains("TemplateVenue"),
     ];
 
@@ -224,6 +223,9 @@ fn integration_scorecard() {
     let show_venue = section != "example";
 
     let mut report = String::new();
+    report.push_str(
+        "OCELOT: reference execution only; production quote layer disabled. See README.\n",
+    );
     report.push_str("\n================ Titan integration scorecard ================\n\n");
 
     if show_example {
@@ -238,7 +240,10 @@ fn integration_scorecard() {
     }
 
     if show_venue {
-        report.push_str(&render_layers("Your venue (fill these in):", venue_done));
+        report.push_str(&render_layers(
+            "Ocelot (quote layer blocked; see README):",
+            venue_done,
+        ));
 
         let fill_in = fill_in_files();
         report.push_str(&render_fill_in(&fill_in));

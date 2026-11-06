@@ -14,16 +14,28 @@ fn venue_enum_matches_route_builder() {
     let cases = [
         (ProgramVenue::RaydiumAmm, RouteBuilderVenue::RaydiumAmm),
         (
-            ProgramVenue::TemplateVenue {
-                zero_for_one: false,
+            ProgramVenue::Ocelot {
+                data: [0; 160],
+                len: 148,
+                quoted_input: 123,
             },
-            RouteBuilderVenue::TemplateVenue {
-                zero_for_one: false,
+            RouteBuilderVenue::Ocelot {
+                data: [0; 160],
+                len: 148,
+                quoted_input: 123,
             },
         ),
         (
-            ProgramVenue::TemplateVenue { zero_for_one: true },
-            RouteBuilderVenue::TemplateVenue { zero_for_one: true },
+            ProgramVenue::Ocelot {
+                data: [255; 160],
+                len: 112,
+                quoted_input: u64::MAX,
+            },
+            RouteBuilderVenue::Ocelot {
+                data: [255; 160],
+                len: 112,
+                quoted_input: u64::MAX,
+            },
         ),
     ];
 
