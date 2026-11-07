@@ -1,6 +1,6 @@
 //! Titan's unmodified shared acceptance assertions, wired to Ocelot.
 //! These are NOT passing acceptance tests: quote() intentionally returns an error
-//! until Titan's execution/curve contract is resolved. With no RPC they SKIP.
+//! until a complete native Phoenix provider is supplied. With no RPC they SKIP.
 //! Offline execution evidence lives in ocelot_replay.rs.
 
 mod common;

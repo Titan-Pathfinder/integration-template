@@ -1,12 +1,14 @@
 # Ocelot native issuer integration for Titan
 
-**Status: review candidate, not ready for production routing.** Market loading,
-v3 transaction construction, the Titan template CPI adapter, and offline replay
-are implemented. `TradingVenue::quote()` deliberately returns an error: Ocelot's
-Phoenix lot boundaries violate the template's monotone/concave quote contract.
-`reference_quote()` executes the deployed programs locally and is a correctness
-reference, not Titan's required allocation-free, sub-microsecond quote engine.
+**Status: native Ocelot issuer math implemented; native Phoenix matcher still
+required before production routing.** `TradingVenue::quote()` uses checked Rust
+arithmetic and an injected, cached-state Phoenix provider. No production provider
+is bundled, so it fails closed by default. Transaction construction has no
+simulation fallback. See [the implementation and remaining dependency](NATIVE_QUOTING.md).
 
+`reference_quote()` remains an opt-in correctness oracle, behind the
+`reference-simulation` feature and explicit `load_reference_oracle(cache)`.
+Default library builds do not depend on LiteSVM.
 Based on [Titan's template](https://github.com/Titan-Pathfinder/integration-template)
 at `c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d` (see `UPSTREAM.json`). The shared
 quote and router acceptance assertions are retained. Their skipped tests do not
@@ -17,13 +19,17 @@ constitute integration acceptance. See [evidence and Titan questions](HANDOFF.md
 - Creation parser for Phoenix `init_market`, validated market/mint PDAs, checked
   account decoders, finance revision, native mark, signed position and fee accrual.
 - Account discovery through `AccountsCache`, including nested Phoenix/Ember
-  accounts, withdrawal throttles, clock, cluster restart slot, and programdata.
-  A failed refresh invalidates the prior execution oracle.
+  accounts, withdrawal throttles, clock and cluster restart slot. Programdata is
+  loaded/subscribed only when the reference oracle is explicitly enabled.
+  A failed refresh invalidates prior prepared quotes and the execution oracle.
 - `phoenix_mint_v3` and `phoenix_redeem_v3` with exact input, full-fill IOC,
   reduce-only redemption, minimum output, deadline and finance revision guards.
 - Matching host/program `Venue::Ocelot` encoding and a CPI adapter that only
   accepts those v3 instructions. A changed runtime input fails instead of
   executing an order sized for a different quote.
+- Native issuer math, shared lot sizing, prepared quote limits, and an explicit
+  native Phoenix-provider interface. Allocation checks and issuer-versus-execution
+  comparisons cover both directions; the test provider is not production code.
 - Local replay of the actual captured Ocelot, Phoenix and Ember executables for
   SOL3L and SOL2S; direct versus routed output parity and guard rejection tests.
   Fixtures contain public chain state. Synthetic user balances and a local ALT
@@ -47,21 +53,23 @@ Rust 1.96.0, Cargo lockfiles, and `cargo-build-sbf` 2.3.0 with platform tools v1
 were used. Run these commands from this directory:
 
 ```sh
-cargo +1.96.0 test --locked --lib --test ocelot --test your_venue_creation --test ocelot_replay
+cargo +1.96.0 test --locked --lib --test ocelot --test ocelot_native --test your_venue_creation
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay
 cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml --lib --test venue_parity
 ```
 
-The first command includes the pinned direct-execution and non-monotonicity
-regression. The routed test is explicitly ignored until you build the router:
+The first command exercises native issuer math without a VM. The second enables
+the exact-execution and lot-boundary regressions. The routed test is explicitly ignored until you build the router:
 
 ```sh
 (cd program-template && cargo-build-sbf --tools-version v1.54 --arch v0 --manifest-path programs/titan-v3-venue-template/Cargo.toml)
-cargo +1.96.0 test --locked --test ocelot_replay -- --ignored --nocapture
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_replay -- --ignored --nocapture
 ```
 
 The final command tests both bundled snapshots and fails if the router binary is
 missing. Optional `OCELOT_SNAPSHOT` (directory or `.bin.gz`) and `OCELOT_MARKET`
-override the fixture. No deployment command is needed.
+override the fixture location; routed native comparisons require the pinned
+market/slot pairs supported by the test matcher. Use `probe` for fresh reference quotes. No deployment command is needed.
 
 The upstream RPC suites (`tests/your_venue.rs` and the program's
 `tests/your_venue_route.rs`) remain diagnostic acceptance gates. They cannot pass
@@ -76,7 +84,7 @@ Use a fresh directory and your read-only RPC URL; the example makes no write RPC
 
 ```sh
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com RUST_LOG=info \
-  cargo +1.96.0 run --locked --example probe -- /tmp/ocelot-titan-capture \
+  cargo +1.96.0 run --locked --features reference-simulation --example probe -- /tmp/ocelot-titan-capture \
   AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM --refresh
 ```
 

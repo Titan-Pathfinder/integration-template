@@ -1,3 +1,4 @@
+#![cfg(feature = "reference-simulation")]
 //! Explicit opt-in replay against captured accounts and actual deployed binaries.
 //! No RPC, signing keys or network writes. A missing fixture fails, never skips.
 mod support;
@@ -29,6 +30,10 @@ async fn replay(folder: &str, market: &str) {
         OcelotVenue::from_account(&market, &cache.get_account(&market).await.unwrap().unwrap())
             .unwrap();
     venue.update_state(&cache).await.unwrap();
+    venue.load_reference_oracle(&cache).await.unwrap();
+    venue
+        .set_phoenix_factory(std::sync::Arc::new(support::FixtureFactory))
+        .unwrap();
     let elf = std::fs::read("program-template/target/deploy/titan_v3_venue_template.so")
         .expect("build router first");
     for mint in [true, false] {
@@ -43,11 +48,9 @@ async fn replay(folder: &str, market: &str) {
             amount: 10_000_000,
             swap_type: SwapType::ExactIn,
         };
-        assert!(
-            venue.quote(request.clone()).is_err(),
-            "production quote must remain disabled"
-        );
+        let native = venue.quote(request.clone()).unwrap();
         let direct = venue.reference_quote(&request).expect("direct replay");
+        assert_eq!(native.expected_output, direct.output);
         assert!(direct.output > 0);
         assert_eq!(direct.input_remaining, 0);
         for reserve in [None, Some(0), Some(12345)] {
@@ -165,6 +168,7 @@ async fn pinned_execution_outputs_and_non_monotone_lot_boundaries() {
             OcelotVenue::from_account(&market, &cache.get_account(&market).await.unwrap().unwrap())
                 .unwrap();
         venue.update_state(&cache).await.unwrap();
+        venue.load_reference_oracle(&cache).await.unwrap();
         for (mint, expected, boundary) in [
             (true, mint_expected, mint_boundary),
             (false, redeem_expected, redeem_boundary),

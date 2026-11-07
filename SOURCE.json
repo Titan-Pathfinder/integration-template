@@ -1,11 +1,11 @@
 {
-  "ocelot_source_commit": "374d612b3f61733ce658824f484f7ed229134eef",
+  "ocelot_source_commit": "1a5213253dcfe701a6b7ddd6861825bc49c39c62",
   "upstream": {
     "repository": "https://github.com/Titan-Pathfinder/integration-template",
     "commit": "c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d",
     "purpose": "Titan venue integration; upstream common quote and route tests retained"
   },
-  "exported_at": "2026-11-06",
-  "scope": "Only the standalone integration package and screened technical handoff. No application source, git history, business documents or credentials.",
-  "changes_during_export": "README links made local; internal PR, CI billing and unrelated web-check notes removed from HANDOFF.md. All Rust source, Cargo manifests/locks and fixtures are unchanged."
+  "exported_at": "2026-11-07",
+  "scope": "Standalone integration package and screened technical handoff only. No application source/history, business documents or credentials.",
+  "changes_during_export": "README links made local; internal PR, CI billing and unrelated web-check notes removed from HANDOFF.md. Rust, manifests, lockfiles and fixtures unchanged."
 }

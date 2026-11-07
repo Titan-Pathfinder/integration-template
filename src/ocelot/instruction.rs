@@ -106,33 +106,17 @@ pub fn build(
     let spline = Pubkey::find_program_address(&[b"spline", c.book.as_ref()], &PHOENIX).0;
     let ember_state = Pubkey::find_program_address(&[PHOENIX.as_ref(), b"state"], &EMBER).0;
     let ember_vault = Pubkey::find_program_address(&[PHOENIX.as_ref(), b"vault"], &EMBER).0;
-    let net = amount - (amount as u128 * m.mint_fee_bps as u128 / 10_000) as u64;
-    let lots = if mint {
-        u64::try_from(net as u128 * m.leverage as u128 / s.mark.quote_per_lot)
-            .map_err(|_| invalid("lot overflow"))?
-    } else {
-        if amount > s.actual_supply || m.shares == 0 {
-            return Err(invalid("redemption exceeds supply"));
-        }
-        let numerator = s.position.base.unsigned_abs() as u128 * amount as u128;
-        (numerator / m.shares as u128) as u64
-            + u64::from(amount == s.actual_supply && !numerator.is_multiple_of(m.shares as u128))
-    };
-    if lots == 0 && (mint || s.position.base != 0) {
-        return Err(invalid("below minimum Phoenix lot"));
-    }
-    let buy = if mint { m.long } else { s.position.base < 0 };
-    // Bounded IOC; the v3 instruction additionally enforces the user's net output.
-    let ticks = u64::try_from(if buy {
-        s.mark.ticks as u128 * 10_100 / 10_000
-    } else {
-        (s.mark.ticks as u128 * 9_900).div_ceil(10_000)
-    })
-    .map_err(|_| invalid("limit price overflow"))?;
+    let sizing = super::quote::order(s, amount, mint)?;
+    let net = sizing.deposit;
     let order = if !mint && s.position.base == 0 {
         vec![]
     } else {
-        ioc(lots, ticks, buy, !mint)
+        ioc(
+            sizing.lots,
+            sizing.limit_ticks,
+            sizing.buy,
+            sizing.reduce_only,
+        )
     };
     let mut venue_order = vec![
         ro(PHOENIX),

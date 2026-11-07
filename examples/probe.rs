@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)] // Preserve Titan's public error type.
 //! Capture public chain state and execute locally. Never submits a transaction.
 use async_trait::async_trait;
 use solana_account::Account;
@@ -97,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account = cache.get_account(&market).await?.ok_or("market missing")?;
     let mut venue = OcelotVenue::from_account(&market, &account)?;
     venue.update_state(&cache).await?;
+    venue.load_reference_oracle(&cache).await?;
     if std::env::args().any(|a| a == "--refresh") {
         // Refresh all discovered dependencies, including ProgramData, in one
         // RPC response after discovery. The reported ELF hashes pin executables.
@@ -131,6 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?,
         )?;
         venue.update_state(&cache).await?;
+        venue.load_reference_oracle(&cache).await?;
     }
     let s = venue.state()?;
     println!(

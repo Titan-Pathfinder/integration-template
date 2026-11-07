@@ -1,8 +1,12 @@
 //! Ocelot's native issuer venue. Reference execution uses captured program binaries, never a wallet.
-//! The simulation quoter is a correctness oracle, not a sub-microsecond production quoter.
+//! Native issuer math uses an injected Phoenix matcher; replay is opt-in test tooling.
 pub mod codec;
 pub mod instruction;
+pub mod quote;
+#[cfg(feature = "reference-simulation")]
 pub mod simulation;
+
+const DISCOVERY_USER: Pubkey = Pubkey::new_from_array([211; 32]);
 
 use crate::{
     account_caching::AccountsCache,
@@ -103,6 +107,10 @@ pub struct OcelotVenue {
     pub pool_id: Pubkey,
     mints: Vec<TokenInfo>,
     state: Option<Arc<State>>,
+    factory: Option<Arc<dyn quote::PhoenixQuoteFactory>>,
+    matcher: Option<Arc<dyn quote::PhoenixQuoter>>,
+    limits: Option<quote::Limits>,
+    #[cfg(feature = "reference-simulation")]
     simulator: Option<Arc<simulation::ExecutionOracle>>,
 }
 impl FromAccount for OcelotVenue {
@@ -123,6 +131,10 @@ impl FromAccount for OcelotVenue {
                 },
             ],
             state: None,
+            factory: None,
+            matcher: None,
+            limits: None,
+            #[cfg(feature = "reference-simulation")]
             simulator: None,
         })
     }
@@ -151,11 +163,13 @@ impl OcelotVenue {
             .as_deref()
             .ok_or(TradingVenueError::NotInitialized("Ocelot".into()))
     }
+    #[cfg(feature = "reference-simulation")]
     pub fn execution_oracle(&self) -> Result<&simulation::ExecutionOracle> {
         self.simulator
             .as_deref()
             .ok_or(TradingVenueError::NotInitialized("execution oracle".into()))
     }
+    #[cfg(feature = "reference-simulation")]
     pub fn reference_quote(&self, r: &QuoteRequest) -> Result<simulation::ExecutionResult> {
         let mint = self.direction(r)?;
         let s = self.state()?;
@@ -173,11 +187,33 @@ impl OcelotVenue {
                 input_remaining: 0,
             });
         }
-        let ix = instruction::build(self, r.amount, mint, simulation::USER, 1)?;
+        let ix = instruction::build(self, r.amount, mint, DISCOVERY_USER, 1)?;
         self.simulator
             .as_ref()
             .ok_or(TradingVenueError::NotInitialized("execution oracle".into()))?
             .execute(ix, r.input_mint, r.output_mint, r.amount)
+    }
+    /// Install native Phoenix preparation. No production provider is bundled yet.
+    /// Preparation runs now and on every refresh; failure invalidates old quotes.
+    pub fn set_phoenix_factory(
+        &mut self,
+        factory: Arc<dyn quote::PhoenixQuoteFactory>,
+    ) -> Result<()> {
+        self.matcher = None;
+        self.factory = Some(factory.clone());
+        if let Some(s) = &self.state {
+            self.matcher = Some(factory.prepare(s)?);
+        }
+        Ok(())
+    }
+    /// Explicitly opt into a local verification VM. `update_state` never loads it.
+    #[cfg(feature = "reference-simulation")]
+    pub async fn load_reference_oracle(&mut self, cache: &dyn AccountsCache) -> Result<()> {
+        self.simulator = None;
+        let oracle =
+            simulation::ExecutionOracle::load(cache, self.state()?, self.mints[1].pubkey).await?;
+        self.simulator = Some(Arc::new(oracle));
+        Ok(())
     }
     pub fn build_with_minimum(
         &self,
@@ -191,7 +227,7 @@ impl OcelotVenue {
 #[async_trait]
 impl TradingVenue for OcelotVenue {
     fn initialized(&self) -> bool {
-        self.state.is_some() && self.simulator.is_some()
+        self.state.is_some() && self.matcher.is_some() && self.limits.is_some()
     }
     fn program_id(&self) -> Pubkey {
         PROGRAM_ID
@@ -227,6 +263,7 @@ impl TradingVenue for OcelotVenue {
             global_bucket(),
         ];
         keys.extend(self.program_dependencies());
+        #[cfg(feature = "reference-simulation")]
         if let Some(oracle) = &self.simulator {
             keys.extend(oracle.programdata_keys.iter().copied());
         }
@@ -242,7 +279,12 @@ impl TradingVenue for OcelotVenue {
         // A failed refresh invalidates old quotes. Never retain a usable stale simulator.
         let keys = self.get_required_pubkeys_for_update()?;
         self.state = None;
-        self.simulator = None;
+        self.matcher = None;
+        self.limits = None;
+        #[cfg(feature = "reference-simulation")]
+        {
+            self.simulator = None;
+        }
         let values = cache.get_accounts(&keys).await?;
         if values.len() != keys.len() {
             return Err(invalid("cache returned wrong account count"));
@@ -353,43 +395,65 @@ impl TradingVenue for OcelotVenue {
             if amount == 0 {
                 continue;
             }
-            if let Ok(ix) = instruction::build(self, amount, mint, simulation::USER, 1) {
+            if let Ok(ix) = instruction::build(self, amount, mint, DISCOVERY_USER, 1) {
                 all.extend(ix.accounts.iter().map(|a| a.pubkey));
             }
         }
         all.extend(self.program_dependencies());
         let synthetic = [
-            simulation::USER,
-            instruction::ata(simulation::USER, USDC),
-            instruction::ata(simulation::USER, self.mints[1].pubkey),
+            DISCOVERY_USER,
+            instruction::ata(DISCOVERY_USER, USDC),
+            instruction::ata(DISCOVERY_USER, self.mints[1].pubkey),
         ];
         let keys: Vec<_> = all.into_iter().filter(|k| !synthetic.contains(k)).collect();
+        let mut state = (*self.state.take().ok_or(invalid("state missing"))?).clone();
         let fetched = cache.get_accounts(&keys).await?;
         if fetched.len() != keys.len() {
-            self.state = None;
             return Err(invalid("cache count mismatch"));
         }
-        let mut state = (*self.state.take().ok_or(invalid("state missing"))?).clone();
         for (k, v) in keys.into_iter().zip(fetched) {
             if let Some(a) = v {
                 state.accounts.insert(k, a);
             }
         }
-        let oracle = simulation::ExecutionOracle::load(cache, &state, self.mints[1].pubkey).await?;
+        let limits = quote::Limits::load(&state)?;
+        let matcher = self
+            .factory
+            .as_ref()
+            .map(|f| f.prepare(&state))
+            .transpose()?;
         self.state = Some(Arc::new(state));
-        self.simulator = Some(Arc::new(oracle));
+        self.limits = Some(limits);
+        self.matcher = matcher;
         Ok(())
     }
     fn quote(&self, r: QuoteRequest) -> Result<QuoteResult> {
-        self.direction(&r)?;
-        self.state()?;
-        // Exact reference outputs are available through reference_quote(). Do not
-        // fabricate a concave marginal derivative from NAV for Titan's optimizer.
-        Err(TradingVenueError::AmmMethodError("Ocelot production quoting is not enabled: Phoenix execution-aware quote engine and Titan curve requirements remain unresolved; use reference_quote only for local verification".into()))
+        let mint = self.direction(&r)?;
+        let state = self.state()?;
+        let matcher = self
+            .matcher
+            .as_deref()
+            .ok_or(TradingVenueError::NotInitialized(
+                "native Phoenix matching provider required; no simulation fallback".into(),
+            ))?;
+        let limits = self.limits.ok_or(invalid("missing quote limits"))?;
+        let output = quote::quote(state, limits, matcher, r.amount, mint)?;
+        Ok(QuoteResult {
+            input_mint: r.input_mint,
+            output_mint: r.output_mint,
+            amount: r.amount,
+            expected_output: output.amount,
+            not_enough_liquidity: false,
+            price: output.price,
+        })
     }
+
     fn generate_swap_instruction(&self, r: QuoteRequest, user: Pubkey) -> Result<Instruction> {
-        let quote = self.reference_quote(&r)?;
-        let minimum = quote.output.saturating_sub(quote.output / 100).max(1);
+        let quote = self.quote(r.clone())?;
+        let minimum = quote
+            .expected_output
+            .saturating_sub(quote.expected_output / 100)
+            .max(1);
         self.build_with_minimum(&r, user, minimum)
     }
 }

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use solana_account::Account;
+#[cfg(feature = "reference-simulation")]
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use std::{
@@ -7,8 +8,9 @@ use std::{
     io::Read,
     path::Path,
 };
+use titan_integration_template::account_caching::{AccountCacheError, AccountsCache};
+#[cfg(feature = "reference-simulation")]
 use titan_integration_template::{
-    account_caching::{AccountCacheError, AccountsCache},
     ocelot::{
         self, OcelotVenue,
         instruction::ata,
@@ -17,7 +19,7 @@ use titan_integration_template::{
     swap_route::{ROUTE_WEIGHT_ALL, build_swap_leg, encode_swap_route_v3_data},
     trading_venue::QuoteRequest,
 };
-
+#[cfg(feature = "reference-simulation")]
 pub const ROUTER: Pubkey = Pubkey::from_str_const("T1TANpTeScyeqVzzgNViGDNrkQ6qHz9KrSBS4aNXvGT");
 pub struct Snapshot(pub HashMap<Pubkey, Option<Account>>);
 impl Snapshot {
@@ -65,6 +67,7 @@ impl AccountsCache for Snapshot {
         Ok(result)
     }
 }
+#[cfg(feature = "reference-simulation")]
 pub fn routed(
     v: &OcelotVenue,
     r: &QuoteRequest,
@@ -126,4 +129,86 @@ pub fn routed(
             data: encode_swap_route_v3_data(r.amount, 2, &[spec]),
         },
     )
+}
+
+/// Deliberately TEST-ONLY fixed execution prices for the two pinned snapshots.
+/// These prices include the uncross observed in replay. This is NOT a general
+/// Phoenix matcher and does NOT model maker risk or withdrawal health.
+/// Its only purpose is to independently test the issuer math against execution.
+pub struct FixtureFactory;
+struct FixtureMatcher {
+    position: titan_integration_template::ocelot::codec::Position,
+    funding: i64,
+    bid: u64,
+    ask: u64,
+}
+impl titan_integration_template::ocelot::quote::PhoenixQuoteFactory for FixtureFactory {
+    fn prepare(
+        &self,
+        s: &titan_integration_template::ocelot::State,
+    ) -> titan_integration_template::ocelot::codec::Result<
+        std::sync::Arc<dyn titan_integration_template::ocelot::quote::PhoenixQuoter>,
+    > {
+        let (bid, ask) = match (s.market.id, s.clock.slot) {
+            (62030, 465928618) => (901_000, 901_100),
+            (63030, 465928707) => (901_200, 901_300),
+            _ => {
+                return Err(titan_integration_template::ocelot::codec::invalid(
+                    "test matcher used outside pinned snapshots",
+                ));
+            }
+        };
+        Ok(std::sync::Arc::new(FixtureMatcher {
+            position: s.position,
+            funding: s.mark.funding,
+            bid,
+            ask,
+        }))
+    }
+}
+impl titan_integration_template::ocelot::quote::PhoenixQuoter for FixtureMatcher {
+    fn quote(
+        &self,
+        order: &titan_integration_template::ocelot::quote::Order,
+    ) -> titan_integration_template::ocelot::codec::Result<
+        titan_integration_template::ocelot::quote::Fill,
+    > {
+        use titan_integration_template::ocelot::{codec::invalid, quote::Fill};
+        if order.lots > 1000 {
+            return Err(invalid("outside fixture top level"));
+        }
+        let quote_atoms = order.lots * if order.buy { self.ask } else { self.bid };
+        let fee_atoms = (quote_atoms * 350).div_ceil(1_000_000);
+        let p = self.position;
+        let delta = if order.buy {
+            order.lots as i128
+        } else {
+            -(order.lots as i128)
+        };
+        let realized = if order.reduce_only && p.base != 0 {
+            let closing_quote = if order.buy {
+                -(quote_atoms as i128)
+            } else {
+                quote_atoms as i128
+            };
+            closing_quote - p.quote as i128 * delta / p.base as i128
+        } else {
+            0
+        };
+        let collateral = p.collateral as i128
+            - p.base as i128 * (self.funding as i128 - p.funding as i128)
+            + order.deposit as i128
+            + realized
+            - fee_atoms as i128;
+        let collateral_after =
+            u64::try_from(collateral).map_err(|_| invalid("fixture collateral"))?;
+        Ok(Fill {
+            lots: order.lots,
+            quote_atoms,
+            fee_atoms,
+            collateral_after,
+            withdrawable_after: collateral_after,
+            funding_after: self.funding,
+        })
+    }
 }
