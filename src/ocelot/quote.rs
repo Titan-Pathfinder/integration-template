@@ -1,8 +1,8 @@
 //! Native issuer arithmetic. No VM, RPC, account decoding or heap allocation.
 //!
-//! Phoenix matching is a separate prerequisite: a provider must implement the
-//! deployed matcher, including spline uncrossing and risk capacity. Summing raw
-//! FIFO orders or SDK spline geometry is NOT sufficient. See NATIVE_QUOTING.md.
+//! A provider supplies an exact fill or a conservative execution model whose
+//! final issuer output is no greater than execution from the same cached state.
+//! Raw FIFO/spline geometry alone is insufficient. See NATIVE_QUOTING.md.
 use super::{
     State,
     codec::{Result, invalid},
@@ -17,8 +17,9 @@ pub trait PhoenixQuoteFactory: Send + Sync {
 /// Immutable native matcher bound to exactly one State by its factory.
 /// Implementations must be allocation-free and must not simulate or do I/O.
 pub trait PhoenixQuoter: Send + Sync {
-    /// Execute the full-fill IOC hypothetically, including fees, funding
-    /// settlement, maker risk/uncrossing, taker risk and collateral movements.
+    /// Model the full-fill IOC, including fees, funding, maker/taker risk,
+    /// uncross reserves and collateral movements. Conservative providers must
+    /// bound final issuer output, not merely individual book prices.
     /// Reject partial fills and unavailable Phoenix/Ember deposits/withdrawals.
     fn quote(&self, order: &Order) -> Result<Fill>;
 }
@@ -36,12 +37,20 @@ pub struct Order {
 #[derive(Debug, Clone, Copy)]
 pub struct Fill {
     pub lots: u64,
-    /// Total executed notional, excluding taker fees, in USDC atoms.
+    /// Modeled full-fill notional, excluding fees, in USDC atoms. The bundled
+    /// provider uses a buy-cost upper bound / sell-proceeds lower bound.
     pub quote_atoms: u64,
-    /// Actual rounded taker fee, in USDC atoms. Do not use a displayed fee rate.
+    /// Fee on that execution model, with any conservative rounding reserve.
+    /// Together with notional it must not overstate post-order equity.
     pub fee_atoms: u64,
-    /// Child collateral after the order and funding settlement, before withdrawal.
+    /// Conservative child collateral after the order, before withdrawal. On a
+    /// full close it must equal the model's remaining equity (checked below).
     pub collateral_after: u64,
+    /// Full-close collateral upper bound before fees. Used to reserve capacity
+    /// when actual execution is better than the conservative output estimate.
+    pub collateral_upper_bound: u64,
+    /// Immediate Phoenix/Ember liquidity budget, independent of estimated PnL.
+    pub withdrawal_capacity: u64,
     /// Immediately withdrawable and redeemable collateral, including Phoenix risk,
     /// queue/vault restrictions and Ember liquidity, for this post-order state.
     pub withdrawable_after: u64,
@@ -368,6 +377,11 @@ pub fn quote(
             return Err(invalid("zero shares"));
         }
         if m.shares != 0 {
+            // With at least 10,000 output atoms, any sub-atom share rounding is
+            // within the on-chain 1bp bound, including a better actual fill.
+            if shares < 10_000 {
+                return Err(invalid("mint too small to bound share rounding"));
+            }
             let entitlement = added as u128 * m.shares as u128;
             if entitlement - shares as u128 * equity as u128 > entitlement / 10_000 {
                 return Err(invalid("mint rounding exceeds one basis point"));
@@ -378,6 +392,20 @@ pub fn quote(
             .ok_or(invalid("share supply overflow"))?;
         shares
     } else {
+        let cash_claim = fraction(limits.cash, amount, m.shares)?;
+        let maximum_withdrawal = if amount == m.shares {
+            fill.collateral_upper_bound
+        } else {
+            claim.saturating_sub(cash_claim)
+        };
+        let maximum_proceeds = maximum_withdrawal
+            .checked_add(cash_claim)
+            .ok_or(invalid("withdrawal upper bound overflow"))?;
+        if maximum_withdrawal > fill.withdrawal_capacity
+            || maximum_proceeds > limits.withdrawal_capacity
+        {
+            return Err(invalid("insufficient capacity for better actual execution"));
+        }
         let proceeds = if amount == m.shares {
             if base_after != 0 {
                 return Err(invalid("full redemption left exposure"));

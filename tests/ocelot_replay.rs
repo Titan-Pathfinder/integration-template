@@ -1,6 +1,7 @@
 #![cfg(feature = "reference-simulation")]
 //! Explicit opt-in replay against captured accounts and actual deployed binaries.
 //! No RPC, signing keys or network writes. A missing fixture fails, never skips.
+#[allow(dead_code)]
 mod support;
 use solana_pubkey::Pubkey;
 use std::path::Path;
@@ -19,6 +20,8 @@ async fn deployed_program_replay_and_router_guards() {
     } else {
         replay("tests/fixtures/sol3l-465928618.bin.gz", LONG).await;
         replay("tests/fixtures/sol2s-465928707.bin.gz", SHORT).await;
+        replay("tests/fixtures/sol3l-467430913.bin.gz", LONG).await;
+        replay("tests/fixtures/sol2s-467431351.bin.gz", SHORT).await;
     }
 }
 const LONG: &str = "AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM";
@@ -31,101 +34,108 @@ async fn replay(folder: &str, market: &str) {
             .unwrap();
     venue.update_state(&cache).await.unwrap();
     venue.load_reference_oracle(&cache).await.unwrap();
-    venue
-        .set_phoenix_factory(std::sync::Arc::new(support::FixtureFactory))
-        .unwrap();
     let elf = std::fs::read("program-template/target/deploy/titan_v3_venue_template.so")
         .expect("build router first");
     for mint in [true, false] {
-        let (input_mint, output_mint) = if mint {
-            (USDC, venue.state().unwrap().market.mint)
+        let supply = venue.state().unwrap().actual_supply;
+        let mut amounts = if mint {
+            vec![10_000_000, 1_000_000_000]
         } else {
-            (venue.state().unwrap().market.mint, USDC)
+            vec![10_000_000.min(supply), 1_000_000_000.min(supply), supply]
         };
-        let request = QuoteRequest {
-            input_mint,
-            output_mint,
-            amount: 10_000_000,
-            swap_type: SwapType::ExactIn,
-        };
-        let native = venue.quote(request.clone()).unwrap();
-        let direct = venue.reference_quote(&request).expect("direct replay");
-        assert_eq!(native.expected_output, direct.output);
-        assert!(direct.output > 0);
-        assert_eq!(direct.input_remaining, 0);
-        for reserve in [None, Some(0), Some(12345)] {
-            let (oracle, route) = support::routed(&venue, &request, &elf, reserve);
-            let q = oracle
-                .execute(route.clone(), input_mint, output_mint, request.amount)
-                .expect("router replay");
-            assert_eq!(
-                q.output, direct.output,
-                "router and direct output must match exactly"
-            );
-            assert_eq!(q.input_remaining, 0);
-            println!(
-                "mint={mint} input={} output={} route_compute={} packet_bytes={} reserved={reserve:?}",
-                request.amount, q.output, q.compute_units, q.packet_bytes
-            );
-            let mut changed = route;
-            changed.data[1..9].copy_from_slice(&(request.amount + 1).to_le_bytes());
-            assert!(
-                oracle
-                    .execute(changed, input_mint, output_mint, request.amount + 1)
-                    .is_err(),
-                "runtime amount mismatch must fail"
-            );
-        }
-        let direct_ix = venue
-            .build_with_minimum(&request, USER, direct.output)
-            .unwrap();
-        let oracle = venue.execution_oracle().unwrap();
-        assert_eq!(
-            oracle
-                .execute(direct_ix.clone(), input_mint, output_mint, request.amount)
-                .unwrap()
-                .output,
-            direct.output
-        );
-        for guard in ["min_output", "deadline", "revision"] {
-            let mut ix = direct_ix.clone();
-            let n = ix.data.len();
-            match guard {
-                "min_output" => {
-                    ix.data[n - 24..n - 16].copy_from_slice(&(direct.output + 1).to_le_bytes())
-                }
-                "deadline" => ix.data[n - 16..n - 8].copy_from_slice(
-                    &(venue.state().unwrap().clock.unix_timestamp - 1).to_le_bytes(),
-                ),
-                _ => ix.data[n - 8..]
-                    .copy_from_slice(&(venue.state().unwrap().revision + 1).to_le_bytes()),
+        amounts.sort_unstable();
+        amounts.dedup();
+        for amount in amounts {
+            let (input_mint, output_mint) = if mint {
+                (USDC, venue.state().unwrap().market.mint)
+            } else {
+                (venue.state().unwrap().market.mint, USDC)
+            };
+            let request = QuoteRequest {
+                input_mint,
+                output_mint,
+                amount,
+                swap_type: SwapType::ExactIn,
+            };
+            let native = venue.quote(request.clone()).unwrap();
+            let direct = venue.reference_quote(&request).expect("direct replay");
+            assert!(native.expected_output <= direct.output);
+            assert!(direct.output > 0);
+            assert_eq!(direct.input_remaining, 0);
+            for reserve in [None, Some(0), Some(12345)] {
+                let (oracle, route) = support::routed(&venue, &request, &elf, reserve);
+                let q = oracle
+                    .execute(route.clone(), input_mint, output_mint, request.amount)
+                    .expect("router replay");
+                assert_eq!(
+                    q.output, direct.output,
+                    "router and direct output must match exactly"
+                );
+                assert_eq!(q.input_remaining, 0);
+                println!(
+                    "{folder} mint={mint} input={} output={} route_compute={} packet_bytes={} reserved={reserve:?}",
+                    request.amount, q.output, q.compute_units, q.packet_bytes
+                );
+                let mut changed = route;
+                changed.data[1..9].copy_from_slice(&(request.amount + 1).to_le_bytes());
+                assert!(
+                    oracle
+                        .execute(changed, input_mint, output_mint, request.amount + 1)
+                        .is_err(),
+                    "runtime amount mismatch must fail"
+                );
             }
-            assert!(
+            let direct_ix = venue
+                .build_with_minimum(&request, USER, direct.output)
+                .unwrap();
+            let oracle = venue.execution_oracle().unwrap();
+            assert_eq!(
                 oracle
-                    .execute(ix, input_mint, output_mint, request.amount)
-                    .is_err(),
-                "{guard} must fail"
-            );
-        }
-        let mut paused = venue.state().unwrap().accounts[&market].clone();
-        paused.data[271] = 1;
-        assert!(
-            oracle
-                .with_account(market, paused)
-                .unwrap()
-                .execute(direct_ix.clone(), input_mint, output_mint, request.amount)
-                .is_err()
-        );
-        if mint {
-            let mut capped = venue.state().unwrap().accounts[&market].clone();
-            capped.data[273..281].copy_from_slice(&1u64.to_le_bytes());
-            assert!(
-                oracle
-                    .with_account(market, capped)
+                    .execute(direct_ix.clone(), input_mint, output_mint, request.amount)
                     .unwrap()
-                    .execute(direct_ix, input_mint, output_mint, request.amount)
+                    .output,
+                direct.output
+            );
+            for guard in ["min_output", "deadline", "revision"] {
+                let mut ix = direct_ix.clone();
+                let n = ix.data.len();
+                match guard {
+                    "min_output" => {
+                        ix.data[n - 24..n - 16].copy_from_slice(&(direct.output + 1).to_le_bytes())
+                    }
+                    "deadline" => ix.data[n - 16..n - 8].copy_from_slice(
+                        &(venue.state().unwrap().clock.unix_timestamp - 1).to_le_bytes(),
+                    ),
+                    _ => ix.data[n - 8..]
+                        .copy_from_slice(&(venue.state().unwrap().revision + 1).to_le_bytes()),
+                }
+                assert!(
+                    oracle
+                        .execute(ix, input_mint, output_mint, request.amount)
+                        .is_err(),
+                    "{guard} must fail"
+                );
+            }
+            let mut paused = venue.state().unwrap().accounts[&market].clone();
+            paused.data[271] = 1;
+            assert!(
+                oracle
+                    .with_account(market, paused)
+                    .unwrap()
+                    .execute(direct_ix.clone(), input_mint, output_mint, request.amount)
                     .is_err()
             );
+            if mint {
+                let mut capped = venue.state().unwrap().accounts[&market].clone();
+                capped.data[273..281].copy_from_slice(&1u64.to_le_bytes());
+                assert!(
+                    oracle
+                        .with_account(market, capped)
+                        .unwrap()
+                        .execute(direct_ix, input_mint, output_mint, request.amount)
+                        .is_err()
+                );
+            }
         }
     }
     // Refresh failure must invalidate the previously loaded execution oracle.
@@ -194,7 +204,7 @@ async fn pinned_execution_outputs_and_non_monotone_lot_boundaries() {
                 a.output > b.output,
                 "fixture must reproduce Titan's monotonicity incompatibility"
             );
-            assert!(venue.quote(request(10_000_000)).is_err());
+            assert!(venue.quote(request(10_000_000)).unwrap().expected_output <= expected);
         }
     }
 }

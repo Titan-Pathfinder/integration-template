@@ -1,10 +1,12 @@
 //! Ocelot's native issuer venue. Reference execution uses captured program binaries, never a wallet.
-//! Native issuer math uses an injected Phoenix matcher; replay is opt-in test tooling.
+//! Native issuer math uses a prepared conservative spline provider; replay is opt-in test tooling.
 pub mod codec;
 pub mod instruction;
+pub mod phoenix;
 pub mod quote;
 #[cfg(feature = "reference-simulation")]
 pub mod simulation;
+pub mod spline;
 
 const DISCOVERY_USER: Pubkey = Pubkey::new_from_array([211; 32]);
 
@@ -101,6 +103,8 @@ pub struct State {
     pub liability: u64,
     pub exchange: instruction::Exchange,
     pub accounts: HashMap<Pubkey, Account>,
+    /// Includes absent accounts: their creation must invalidate prepared quotes.
+    pub required_pubkeys: Vec<Pubkey>,
 }
 #[derive(Clone)]
 pub struct OcelotVenue {
@@ -131,7 +135,7 @@ impl FromAccount for OcelotVenue {
                 },
             ],
             state: None,
-            factory: None,
+            factory: Some(Arc::new(phoenix::NativePhoenixFactory)),
             matcher: None,
             limits: None,
             #[cfg(feature = "reference-simulation")]
@@ -145,7 +149,141 @@ async fn required(cache: &dyn AccountsCache, key: Pubkey) -> Result<Account> {
         .await?
         .ok_or(TradingVenueError::NoAccountFound(key.into()))
 }
+async fn fetch_accounts(
+    cache: &dyn AccountsCache,
+    keys: &[Pubkey],
+) -> Result<HashMap<Pubkey, Account>> {
+    let values = cache.get_accounts(keys).await?;
+    if values.len() != keys.len() {
+        return Err(invalid("cache returned wrong account count"));
+    }
+    Ok(keys
+        .iter()
+        .copied()
+        .zip(values)
+        .filter_map(|(k, v)| v.map(|a| (k, a)))
+        .collect())
+}
+
+// Decode every quote input from the same final account map. Discovery data is
+// deliberately discarded; AccountsCache must still provide a coherent batch.
+fn decode_state(
+    pool: Pubkey,
+    accounts: HashMap<Pubkey, Account>,
+    required_pubkeys: Vec<Pubkey>,
+) -> Result<(State, Vec<TokenInfo>)> {
+    let read = |k: &Pubkey| {
+        accounts
+            .get(k)
+            .ok_or(TradingVenueError::NoAccountFound((*k).into()))
+    };
+    let m = Market::decode(pool, read(&pool)?)?;
+    let c = Config::decode(pool, read(&instruction::pda(b"phoenix", pool))?)?;
+    let clock: Clock = bincode::deserialize(&read(&solana_sdk_ids::sysvar::clock::ID)?.data)
+        .map_err(|_| invalid("invalid clock"))?;
+    let mark = codec::mark(read(&PERP_MAP)?, &c, clock.slot)?;
+    let f = codec::account(
+        read(&instruction::pda(b"finance_v1", pool))?,
+        PROGRAM_ID,
+        &discriminator("account:MarketFinanceV1"),
+        59,
+    )?;
+    if f[8] != 1 || key(f, 9)? != pool || !codec::boolean(f, 41)? {
+        return Err(invalid("inactive/mismatched finance"));
+    }
+    let revision = u64_at(f, 43)?;
+    let cash = u64_at(f, 51)?;
+    let g = codec::account(
+        read(&PHOENIX_GLOBAL)?,
+        PHOENIX,
+        &discriminator("account:global_configuration"),
+        1104,
+    )?;
+    if key(g, 296)? != COLLATERAL || key(g, 360)? != PERP_MAP {
+        return Err(invalid("Phoenix global identity mismatch"));
+    }
+    let exchange = instruction::Exchange {
+        vault: key(g, 328)?,
+        indices: vec![key(g, 392)?],
+        buffers: vec![key(g, 424)?],
+        withdraw_queue: key(g, 472)?,
+    };
+    let mut mints = vec![];
+    for k in [m.usdc, m.mint] {
+        let acc = read(&k)?;
+        if acc.owner != spl_token::ID || acc.data.len() != 82 {
+            return Err(invalid("classic SPL mint required"));
+        }
+        let token = TokenInfo::new(&k, acc, clock.epoch)?;
+        if token.decimals != 6 || token.is_token_2022 {
+            return Err(invalid("unsupported token format"));
+        }
+        mints.push(token);
+    }
+    let actual_supply = u64_at(&read(&m.mint)?.data, 36)?;
+    if actual_supply > m.shares {
+        return Err(invalid("SPL supply exceeds accounting supply"));
+    }
+    // Current Phoenix configuration has a single account in each arena group.
+    // Explicitly fail if it expands, rather than silently omit runtime dependencies.
+    for k in [exchange.indices[0], exchange.buffers[0]] {
+        let a = accounts.get(&k).ok_or(invalid("missing arena"))?;
+        if a.owner != PHOENIX || codec::u16_at(&a.data, 52)? != 1 {
+            return Err(invalid(
+                "expanded Phoenix arena requires refreshed account discovery",
+            ));
+        }
+    }
+    let position = codec::position(accounts.get(&c.trader).ok_or(invalid("missing child"))?, &c)?;
+    let gross = codec::gross(position, mark, cash)?;
+    let liability = codec::accrued_liability(&m, gross, clock.unix_timestamp)?;
+    let state = State {
+        market: m,
+        config: c,
+        mark,
+        position,
+        clock,
+        actual_supply,
+        revision,
+        gross,
+        liability,
+        exchange,
+        accounts,
+        required_pubkeys,
+    };
+    Ok((state, mints))
+}
+
 impl OcelotVenue {
+    fn discovered_keys(&self) -> Result<Vec<Pubkey>> {
+        let mut all: HashSet<_> = self
+            .get_required_pubkeys_for_update()?
+            .into_iter()
+            .collect();
+        for mint in [true, false] {
+            let s = self.state()?;
+            let amount = if mint {
+                u64::try_from(s.mark.quote_per_lot.div_ceil(s.market.leverage as u128))
+                    .map_err(|_| invalid("minimum lot overflow"))?
+                    .saturating_mul(2)
+            } else {
+                s.actual_supply
+            };
+            if amount != 0
+                && let Ok(ix) = instruction::build(self, amount, mint, DISCOVERY_USER, 1)
+            {
+                all.extend(ix.accounts.iter().map(|a| a.pubkey));
+            }
+        }
+        let synthetic = [
+            DISCOVERY_USER,
+            instruction::ata(DISCOVERY_USER, USDC),
+            instruction::ata(DISCOVERY_USER, self.mints[1].pubkey),
+        ];
+        let mut keys: Vec<_> = all.into_iter().filter(|k| !synthetic.contains(k)).collect();
+        keys.sort();
+        Ok(keys)
+    }
     pub fn direction(&self, r: &QuoteRequest) -> Result<bool> {
         if !matches!(r.swap_type, SwapType::ExactIn) {
             return Err(TradingVenueError::ExactOutNotSupported);
@@ -193,7 +331,7 @@ impl OcelotVenue {
             .ok_or(TradingVenueError::NotInitialized("execution oracle".into()))?
             .execute(ix, r.input_mint, r.output_mint, r.amount)
     }
-    /// Install native Phoenix preparation. No production provider is bundled yet.
+    /// Override the bundled conservative native Phoenix provider.
     /// Preparation runs now and on every refresh; failure invalidates old quotes.
     pub fn set_phoenix_factory(
         &mut self,
@@ -261,6 +399,11 @@ impl TradingVenue for OcelotVenue {
             solana_sdk_ids::sysvar::clock::ID,
             solana_sdk_ids::sysvar::last_restart_slot::ID,
             global_bucket(),
+            Pubkey::find_program_address(
+                &[b"withdraw_throttle", b"market", self.pool_id.as_ref()],
+                &PROGRAM_ID,
+            )
+            .0,
         ];
         keys.extend(self.program_dependencies());
         #[cfg(feature = "reference-simulation")]
@@ -270,13 +413,16 @@ impl TradingVenue for OcelotVenue {
         keys.extend(self.mints.iter().map(|t| t.pubkey));
         if let Some(s) = &self.state {
             keys.extend(s.accounts.keys().copied());
+            keys.extend(s.required_pubkeys.iter().copied());
+            // Native preparation needs this even before the first mint, when
+            // zero circulating supply prevents redeem-instruction discovery.
+            keys.push(s.exchange.withdraw_queue);
         }
         keys.sort();
         keys.dedup();
         Ok(keys)
     }
     async fn update_state(&mut self, cache: &dyn AccountsCache) -> Result<()> {
-        // A failed refresh invalidates old quotes. Never retain a usable stale simulator.
         let keys = self.get_required_pubkeys_for_update()?;
         self.state = None;
         self.matcher = None;
@@ -285,146 +431,55 @@ impl TradingVenue for OcelotVenue {
         {
             self.simulator = None;
         }
-        let values = cache.get_accounts(&keys).await?;
-        if values.len() != keys.len() {
-            return Err(invalid("cache returned wrong account count"));
-        }
-        let mut accounts: HashMap<_, _> = keys
-            .into_iter()
-            .zip(values)
-            .filter_map(|(k, v)| v.map(|a| (k, a)))
-            .collect();
-        let read = |k: &Pubkey| {
-            accounts
-                .get(k)
-                .ok_or(TradingVenueError::NoAccountFound((*k).into()))
-        };
-        let m = Market::decode(self.pool_id, read(&self.pool_id)?)?;
+
+        // Discovery may span cache generations. Never publish or quote this state.
+        let mut accounts = fetch_accounts(cache, &keys).await?;
         let c = Config::decode(
             self.pool_id,
-            read(&instruction::pda(b"phoenix", self.pool_id))?,
+            accounts
+                .get(&instruction::pda(b"phoenix", self.pool_id))
+                .ok_or(invalid("missing discovery config"))?,
         )?;
-        let clock: Clock = bincode::deserialize(&read(&solana_sdk_ids::sysvar::clock::ID)?.data)
-            .map_err(|_| invalid("invalid clock"))?;
-        let mark = codec::mark(read(&PERP_MAP)?, &c, clock.slot)?;
-        let f = codec::account(
-            read(&instruction::pda(b"finance_v1", self.pool_id))?,
-            PROGRAM_ID,
-            &discriminator("account:MarketFinanceV1"),
-            59,
-        )?;
-        if f[8] != 1 || key(f, 9)? != self.pool_id || !codec::boolean(f, 41)? {
-            return Err(invalid("inactive/mismatched finance"));
-        }
-        let revision = u64_at(f, 43)?;
-        let cash = u64_at(f, 51)?;
-        let g = codec::account(
-            read(&PHOENIX_GLOBAL)?,
-            PHOENIX,
-            &discriminator("account:global_configuration"),
-            1104,
-        )?;
-        if key(g, 296)? != COLLATERAL || key(g, 360)? != PERP_MAP {
-            return Err(invalid("Phoenix global identity mismatch"));
-        }
-        let exchange = instruction::Exchange {
-            vault: key(g, 328)?,
-            indices: vec![key(g, 392)?],
-            buffers: vec![key(g, 424)?],
-            withdraw_queue: key(g, 472)?,
-        };
-        let mut mints = vec![];
-        for k in [m.usdc, m.mint] {
-            let acc = read(&k)?;
-            if acc.owner != spl_token::ID || acc.data.len() != 82 {
-                return Err(invalid("classic SPL mint required"));
-            }
-            let token = TokenInfo::new(&k, acc, clock.epoch)?;
-            if token.decimals != 6 || token.is_token_2022 {
-                return Err(invalid("unsupported token format"));
-            }
-            mints.push(token);
-        }
-        let actual_supply = u64_at(&read(&m.mint)?.data, 36)?;
-        if actual_supply > m.shares {
-            return Err(invalid("SPL supply exceeds accounting supply"));
-        }
-        for k in [c.trader, exchange.indices[0], exchange.buffers[0]] {
-            accounts.insert(k, required(cache, k).await?);
-        }
-        // Current Phoenix configuration has a single account in each arena group.
-        // Explicitly fail if it expands, rather than silently omit runtime dependencies.
-        for k in [exchange.indices[0], exchange.buffers[0]] {
-            let a = accounts.get(&k).ok_or(invalid("missing arena"))?;
-            if a.owner != PHOENIX || codec::u16_at(&a.data, 52)? != 1 {
-                return Err(invalid(
-                    "expanded Phoenix arena requires refreshed account discovery",
-                ));
+        let global = accounts
+            .get(&PHOENIX_GLOBAL)
+            .ok_or(invalid("missing discovery global"))?;
+        let dependencies = [c.trader, key(&global.data, 392)?, key(&global.data, 424)?];
+        for k in dependencies {
+            if let std::collections::hash_map::Entry::Vacant(entry) = accounts.entry(k) {
+                entry.insert(required(cache, k).await?);
             }
         }
-        let position =
-            codec::position(accounts.get(&c.trader).ok_or(invalid("missing child"))?, &c)?;
-        let gross = codec::gross(position, mark, cash)?;
-        let liability = codec::accrued_liability(&m, gross, clock.unix_timestamp)?;
-        let state = State {
-            market: m,
-            config: c,
-            mark,
-            position,
-            clock,
-            actual_supply,
-            revision,
-            gross,
-            liability,
-            exchange,
-            accounts,
-        };
-        self.mints = mints;
-        self.state = Some(Arc::new(state));
-        // Discover all direct and nested CPI account groups from both canonical builders.
-        let mut all = HashSet::new();
-        for mint in [true, false] {
-            let s = self.state()?;
-            let amount = if mint {
-                u64::try_from(s.mark.quote_per_lot.div_ceil(s.market.leverage as u128))
-                    .map_err(|_| invalid("minimum lot overflow"))?
-                    .saturating_mul(2)
-            } else {
-                s.actual_supply
-            };
-            if amount == 0 {
-                continue;
-            }
-            if let Ok(ix) = instruction::build(self, amount, mint, DISCOVERY_USER, 1) {
-                all.extend(ix.accounts.iter().map(|a| a.pubkey));
-            }
+        let (state, mints) = decode_state(self.pool_id, accounts, keys)?;
+        let mut discovery = self.clone();
+        discovery.state = Some(Arc::new(state));
+        discovery.mints = mints;
+        let final_keys = discovery.discovered_keys()?;
+        drop(discovery);
+
+        // One complete read after discovery. Do not merge this with earlier reads.
+        let accounts = fetch_accounts(cache, &final_keys).await?;
+        let (state, mints) = decode_state(self.pool_id, accounts, final_keys.clone())?;
+        let mut candidate = self.clone();
+        candidate.state = Some(Arc::new(state));
+        candidate.mints = mints;
+        let requested: HashSet<_> = final_keys.into_iter().collect();
+        if candidate
+            .discovered_keys()?
+            .iter()
+            .any(|k| !requested.contains(k))
+        {
+            return Err(invalid(
+                "account dependencies changed during discovery; refresh required",
+            ));
         }
-        all.extend(self.program_dependencies());
-        let synthetic = [
-            DISCOVERY_USER,
-            instruction::ata(DISCOVERY_USER, USDC),
-            instruction::ata(DISCOVERY_USER, self.mints[1].pubkey),
-        ];
-        let keys: Vec<_> = all.into_iter().filter(|k| !synthetic.contains(k)).collect();
-        let mut state = (*self.state.take().ok_or(invalid("state missing"))?).clone();
-        let fetched = cache.get_accounts(&keys).await?;
-        if fetched.len() != keys.len() {
-            return Err(invalid("cache count mismatch"));
-        }
-        for (k, v) in keys.into_iter().zip(fetched) {
-            if let Some(a) = v {
-                state.accounts.insert(k, a);
-            }
-        }
-        let limits = quote::Limits::load(&state)?;
-        let matcher = self
+        let state = candidate.state()?;
+        candidate.limits = Some(quote::Limits::load(state)?);
+        candidate.matcher = candidate
             .factory
             .as_ref()
-            .map(|f| f.prepare(&state))
+            .map(|f| f.prepare(candidate.state()?))
             .transpose()?;
-        self.state = Some(Arc::new(state));
-        self.limits = Some(limits);
-        self.matcher = matcher;
+        *self = candidate;
         Ok(())
     }
     fn quote(&self, r: QuoteRequest) -> Result<QuoteResult> {

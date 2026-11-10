@@ -207,6 +207,8 @@ impl titan_integration_template::ocelot::quote::PhoenixQuoter for FixtureMatcher
             quote_atoms,
             fee_atoms,
             collateral_after,
+            collateral_upper_bound: collateral_after,
+            withdrawal_capacity: u64::MAX,
             withdrawable_after: collateral_after,
             funding_after: self.funding,
         })

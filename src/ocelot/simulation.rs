@@ -175,6 +175,18 @@ impl ExecutionOracle {
         })
     }
     /// Fork the local bank for negative tests; never writes to RPC.
+    pub fn with_clock(&self, clock: &Clock) -> Self {
+        let mut fork = self.clone();
+        fork.vm.set_sysvar(&modern_clock::Clock {
+            slot: clock.slot,
+            epoch_start_timestamp: clock.epoch_start_timestamp,
+            epoch: clock.epoch,
+            leader_schedule_epoch: clock.leader_schedule_epoch,
+            unix_timestamp: clock.unix_timestamp,
+        });
+        fork
+    }
+    /// Fork the local bank for negative tests; never writes to RPC.
     pub fn with_account(&self, key: Pubkey, account: Account) -> Result<Self> {
         let mut fork = self.clone();
         fork.vm
@@ -196,6 +208,18 @@ impl ExecutionOracle {
         output: Pubkey,
         amount: u64,
     ) -> Result<ExecutionResult> {
+        self.execute_with_accounts(ix, input, output, amount)
+            .map(|(result, _)| result)
+    }
+    /// Return the executed account changes for sequential, same-bank regressions.
+    /// This is reference-only tooling; no transaction is submitted.
+    pub fn execute_with_accounts(
+        &self,
+        ix: Instruction,
+        input: Pubkey,
+        output: Pubkey,
+        amount: u64,
+    ) -> Result<(ExecutionResult, HashMap<Pubkey, Account>)> {
         let mut vm = self.vm.clone();
         vm.set_account(
             modern_key(instruction::ata(USER, input)),
@@ -267,11 +291,28 @@ impl ExecutionOracle {
             .find(|(key, _)| *key == source)
             .ok_or(invalid("simulation omitted input account"))?;
         let input_remaining = codec::u64_at(account.data(), 64)?;
-        Ok(ExecutionResult {
+        let execution = ExecutionResult {
             output,
             compute_units: result.meta.compute_units_consumed,
             packet_bytes,
             input_remaining,
-        })
+        };
+        let accounts = result
+            .post_accounts
+            .into_iter()
+            .map(|(k, a)| {
+                (
+                    Pubkey::new_from_array(k.to_bytes()),
+                    Account {
+                        lamports: a.lamports(),
+                        data: a.data().to_vec(),
+                        owner: Pubkey::new_from_array(a.owner().to_bytes()),
+                        executable: a.executable(),
+                        rent_epoch: a.rent_epoch(),
+                    },
+                )
+            })
+            .collect();
+        Ok((execution, accounts))
     }
 }

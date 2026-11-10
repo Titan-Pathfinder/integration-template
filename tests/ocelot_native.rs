@@ -34,10 +34,9 @@ async fn fixture(short: bool) -> (OcelotVenue, support::Snapshot) {
         OcelotVenue::from_account(&key, &cache.get_account(&key).await.unwrap().unwrap()).unwrap();
     venue.update_state(&cache).await.unwrap();
     assert!(
-        !venue.initialized(),
-        "missing native Phoenix implementation must fail closed"
+        venue.initialized(),
+        "bundled native provider prepares from cache"
     );
-    assert!(venue.quote(request(&venue, true, 10_000_000)).is_err());
     venue
         .set_phoenix_factory(Arc::new(support::FixtureFactory))
         .unwrap();
@@ -203,6 +202,8 @@ async fn cash_exits_bootstrap_and_abandoned_supply() {
         quote_atoms: 0,
         fee_atoms: 0,
         collateral_after: 0,
+        collateral_upper_bound: 0,
+        withdrawal_capacity: u64::MAX,
         withdrawable_after: 0,
         funding_after: s.mark.funding,
     };
@@ -245,6 +246,8 @@ async fn cash_exits_bootstrap_and_abandoned_supply() {
         quote_atoms: (order.lots as u128 * s.mark.quote_per_lot) as u64,
         fee_atoms: 0,
         collateral_after: order.deposit,
+        collateral_upper_bound: order.deposit,
+        withdrawal_capacity: u64::MAX,
         withdrawable_after: 0,
         funding_after: s.mark.funding,
     };
@@ -367,8 +370,8 @@ async fn benchmark_issuer_with_fixture_matcher() {
     std::hint::black_box(checksum);
     samples.sort_by(f64::total_cmp);
     println!(
-        "ISSUER + FIXTURE MATCHER ONLY: 1,000,000 calls, batch-mean p50={:.1}ns p99={:.1}ns; checksum={checksum}",
-        samples[50], samples[99]
+        "ISSUER + FIXTURE MATCHER ONLY: 1,000,000 calls, batch-mean p50={:.1}ns p99={:.1}ns max={:.1}ns (nearest-rank); checksum={checksum}",
+        samples[49], samples[98], samples[99]
     );
     assert!(
         samples[99] < 1000.0,

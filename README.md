@@ -1,10 +1,28 @@
 # Ocelot native issuer integration for Titan
 
-**Status: native Ocelot issuer math implemented; native Phoenix matcher still
-required before production routing.** `TradingVenue::quote()` uses checked Rust
-arithmetic and an injected, cached-state Phoenix provider. No production provider
-is bundled, so it fails closed by default. Transaction construction has no
-simulation fallback. See [the implementation and remaining dependency](NATIVE_QUOTING.md).
+**Status: conservative native Phoenix quoting implemented and installed by default
+for supported cached states.** `TradingVenue::quote()` performs issuer arithmetic,
+spline pricing and risk/withdrawal checks without simulation, network access or heap
+allocation. See [implementation, supported scope and measurements](NATIVE_QUOTING.md).
+The teammate's final review of `a8c5f9fd` closed the last blocker and found no new
+blockers for same-state quote correctness and execution safety. The candidate is
+submitted here for Titan engineering review.
+Titan's error/timing and routing/runtime acceptance remain outstanding. Live
+routing is not activated.
+
+The complete provider passed 205 captured-state execution comparisons without an
+overquote or false acceptance; worst observed underquote is now 4.144072 bp after
+restricting maker risk to the reviewed oracle-policy profile (200/205 are within 1 bp). The review
+hardening fixes mixed-read preparation, classifies all 39 fixture declines, and
+adds actual-transaction expiry, cash, full-exit capacity and binding-maker tests.
+The follow-up fixes divergent-oracle eligibility, pins price-validity policy,
+retains subscriptions for absent dependencies, and verifies cold/warm bootstrap
+after executed full exits. A further fix requires spot/perp validity even at zero
+pricing weight. See [latest review evidence](NATIVE_QUOTING.md#zero-weight-follow-up-10-november). This is
+sample evidence, not a universal error bound. Unsupported risk/price configurations
+and crossed splines fail closed. Gally's SDK link is not an implementation dependency.
+The captured Anthropic oracle policy and special-price status are outside this
+provider's supported scope; ANT3L/ANT2S require separate validation before activation.
 
 `reference_quote()` remains an opt-in correctness oracle, behind the
 `reference-simulation` feature and explicit `load_reference_oracle(cache)`.
@@ -21,6 +39,8 @@ constitute integration acceptance. See [evidence and Titan questions](HANDOFF.md
 - Account discovery through `AccountsCache`, including nested Phoenix/Ember
   accounts, withdrawal throttles, clock and cluster restart slot. Programdata is
   loaded/subscribed only when the reference oracle is explicitly enabled.
+  Absent requested accounts remain watched; zero supply still discovers the
+  withdrawal queue and optional market throttle.
   A failed refresh invalidates prior prepared quotes and the execution oracle.
 - `phoenix_mint_v3` and `phoenix_redeem_v3` with exact input, full-fill IOC,
   reduce-only redemption, minimum output, deadline and finance revision guards.
@@ -28,8 +48,8 @@ constitute integration acceptance. See [evidence and Titan questions](HANDOFF.md
   accepts those v3 instructions. A changed runtime input fails instead of
   executing an order sized for a different quote.
 - Native issuer math, shared lot sizing, prepared quote limits, and an explicit
-  native Phoenix-provider interface. Allocation checks and issuer-versus-execution
-  comparisons cover both directions; the test provider is not production code.
+  native Phoenix-provider interface and a bundled capacity-limited spline provider.
+  Allocation checks and complete issuer-versus-execution comparisons cover both directions.
 - Local replay of the actual captured Ocelot, Phoenix and Ember executables for
   SOL3L and SOL2S; direct versus routed output parity and guard rejection tests.
   Fixtures contain public chain state. Synthetic user balances and a local ALT
@@ -54,7 +74,8 @@ were used. Run these commands from this directory:
 
 ```sh
 cargo +1.96.0 test --locked --lib --test ocelot --test ocelot_native --test your_venue_creation
-cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay --test ocelot_state
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_spline --test ocelot_phoenix
 cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml --lib --test venue_parity
 ```
 
@@ -66,15 +87,14 @@ the exact-execution and lot-boundary regressions. The routed test is explicitly 
 cargo +1.96.0 test --locked --features reference-simulation --test ocelot_replay -- --ignored --nocapture
 ```
 
-The final command tests both bundled snapshots and fails if the router binary is
+The final command tests all four bundled snapshots, larger sizes and full exits and fails if the router binary is
 missing. Optional `OCELOT_SNAPSHOT` (directory or `.bin.gz`) and `OCELOT_MARKET`
-override the fixture location; routed native comparisons require the pinned
-market/slot pairs supported by the test matcher. Use `probe` for fresh reference quotes. No deployment command is needed.
+override the fixture location; routed native comparisons use the bundled provider
+and require a supported state. Use `probe` for fresh reference quotes. No deployment command is needed.
 
 The upstream RPC suites (`tests/your_venue.rs` and the program's
-`tests/your_venue_route.rs`) remain diagnostic acceptance gates. They cannot pass
-while production quoting is disabled, and their LiteSVM 0.6.1 cannot load the
-captured Phoenix EM_SBPF executable. Offline replay uses LiteSVM 0.16.0 while
+`tests/your_venue_route.rs`) remain diagnostic acceptance gates. Their original monotone/concave assertions conflict with Phoenix lot steps, and
+their LiteSVM 0.6.1 cannot load the captured Phoenix EM_SBPF executable. Offline replay uses LiteSVM 0.16.0 while
 preserving Titan's Solana 2 public types. Do not interpret an RPC-less `cargo test`
 run, or the template's structural scorecard, as production acceptance.
 

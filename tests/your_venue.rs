@@ -1,7 +1,7 @@
 //! Titan's unmodified shared acceptance assertions, wired to Ocelot.
-//! These are NOT passing acceptance tests: quote() intentionally returns an error
-//! until a complete native Phoenix provider is supplied. With no RPC they SKIP.
-//! Offline execution evidence lives in ocelot_replay.rs.
+//! With no RPC these SKIP. The original curve assertions still conflict with
+//! Phoenix lot steps; the original VM cannot load current Phoenix binaries.
+//! Native conservative provider evidence lives in ocelot_phoenix/ocelot_replay.
 
 mod common;
 
