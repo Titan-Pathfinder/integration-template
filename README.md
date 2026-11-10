@@ -48,6 +48,18 @@ The program template includes a real Raydium AMM CPI example plus a minimal
   duplicate transfer-fee handling in quote math.
 - `AccountsCache`: loads required on-chain accounts with RPC caching.
 
+#### 6. Quote-time context (`ctx`)
+
+`quote()` and `bounds()` take `ctx: Option<&dyn SharedAccountsCache>`. If your
+pricing reads accounts outside the pool state at quote time (the `Clock`
+sysvar, a mint's `supply`, an oracle), list them in `requested_ctx()`; Titan
+fills `ctx` with them from the same slot as the state loaded in
+`update_state()`. Read them with `ctx.get_account_shared(&pubkey)`, which
+returns an `AccountSharedData` (a refcount bump, no copy, no allocation). When
+`ctx` is `None` or lacks an account, fall back to the state captured in
+`update_state()`. Venues that request nothing ignore `ctx`; the test suite seeds
+it with a `SeededCache` built from `requested_ctx()`.
+
 ## Included Tests
 
 Every venue must pass the same shared suite in `tests/common/mod.rs`, run through
@@ -79,6 +91,7 @@ route builder, and program template files below. `program-template/...` means
 | Quote layer | `src/your_venue/mod.rs` | `FromAccount::from_account()` | Deserialize the pool account and record state accounts to refresh. |
 | Quote layer | `src/your_venue/mod.rs` | `protocol()` | Return your real `PoolProtocol` variant. |
 | Quote layer | `src/your_venue/mod.rs` | `update_state()` | Fetch accounts through `AccountsCache`, deserialize live state, populate `token_info`, and initialize the venue. |
+| Quote layer | `src/your_venue/mod.rs` | `requested_ctx()` | Optional: list accounts outside the pool state that `quote()` reads from `ctx` (e.g. the `Clock` sysvar, a mint's supply). |
 | Quote layer | `src/your_venue/mod.rs` | `quote()` | Implement exact-in quote math, including raw-atom marginal price. |
 | Quote layer | `src/your_venue/mod.rs` | `generate_swap_instruction()` | Build your venue's swap instruction with the same per-leg `AccountMeta` shape the route builder will pass through. |
 | Quote layer | `tests/your_venue.rs` | `pool()` + `programs()` | Point the shared off-chain suite at a real pool and required program binaries. |

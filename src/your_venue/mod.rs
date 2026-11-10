@@ -17,7 +17,7 @@ use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    account_caching::AccountsCache,
+    account_caching::{AccountsCache, SharedAccountsCache},
     trading_venue::{
         FromAccount, QuoteRequest, QuoteResult, TradingVenue,
         error::TradingVenueError,
@@ -122,12 +122,25 @@ impl TradingVenue for YourVenue {
         todo!("YourVenue::update_state — load live pool state from the cache")
     }
 
-    fn quote(&self, request: QuoteRequest) -> Result<QuoteResult, TradingVenueError> {
+    // FILL_IN (optional): if your pricing reads accounts outside the pool state
+    // at quote time — the `Clock` sysvar, a mint's supply, an oracle — list them
+    // here and read them from `ctx` in `quote`. Leave as-is otherwise.
+    fn requested_ctx(&self) -> Vec<Pubkey> {
+        vec![]
+    }
+
+    fn quote(
+        &self,
+        request: QuoteRequest,
+        ctx: Option<&dyn SharedAccountsCache>,
+    ) -> Result<QuoteResult, TradingVenueError> {
         // FILL_IN: compute the output for `request.amount` and the marginal price
         // `f'(amount)` in raw output atoms per raw input atom. See
         // `QuoteResult::price` and `crate::example::price` for the
-        // constant-product derivation.
-        let _ = request;
+        // constant-product derivation. Accounts named in `requested_ctx` are
+        // read with `ctx.get_account_shared(&pubkey)`; fall back to the state
+        // captured in `update_state` when `ctx` is `None` or lacks one.
+        let _ = (request, ctx);
         todo!("YourVenue::quote — return expected_output and the marginal price")
     }
 

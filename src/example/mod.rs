@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::{
-    account_caching::AccountsCache,
+    account_caching::{AccountsCache, SharedAccountsCache},
     example::{
         amm::{
             AmmKeys, CalculateResult, calculate_pool_vault_amounts_from_accounts, load_amm_keys,
@@ -231,7 +231,13 @@ impl TradingVenue for RaydiumAmmVenue {
         Ok(())
     }
 
-    fn quote(&self, request: QuoteRequest) -> Result<QuoteResult, TradingVenueError> {
+    // Raydium AMM v4 prices from the pool and vault balances alone, so it
+    // requests no quote-time context and ignores `ctx`.
+    fn quote(
+        &self,
+        request: QuoteRequest,
+        _ctx: Option<&dyn SharedAccountsCache>,
+    ) -> Result<QuoteResult, TradingVenueError> {
         // TODO: Create an error for this to throw.
         let calculate_result = self
             .calculate_result

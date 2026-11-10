@@ -36,6 +36,7 @@ use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as TokenAccount, AccountState};
 use titan_integration_template::account_caching::AccountsCache;
 use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
+use titan_integration_template::account_caching::seeded_cache::SeededCache;
 use titan_integration_template::swap_route::{
     ROUTE_WEIGHT_ALL, build_swap_leg, encode_swap_route_v3_data,
 };
@@ -448,6 +449,12 @@ pub async fn run_swap_route<V: RouteVenue>(config: RouteConfig) {
     let cache = RpcClientCache::new(rpc);
     let mut venue = V::from_account(&config.pool, &venue_account).expect("from_account failed");
     venue.update_state(&cache).await.expect("update_state failed");
+    let ctx_keys = venue.requested_ctx();
+    let ctx_accounts = cache
+        .get_accounts(&ctx_keys)
+        .await
+        .expect("failed to fetch requested_ctx accounts");
+    let ctx = SeededCache::from_accounts(ctx_keys.into_iter().zip(ctx_accounts));
 
     // LiteSVM with the route program + the venue's programs loaded.
     let (mut litesvm, payer) = setup_litesvm();
@@ -463,7 +470,7 @@ pub async fn run_swap_route<V: RouteVenue>(config: RouteConfig) {
     initialize_titan_pda(&mut litesvm, &payer, titan_pda);
 
     for (input_index, output_index) in venue.directions_num() {
-        let (lower, upper) = venue.bounds(input_index, output_index).unwrap();
+        let (lower, upper) = venue.bounds(input_index, output_index, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(input_index as usize).unwrap().pubkey;
         let output_mint = venue.get_token(output_index as usize).unwrap().pubkey;
 
@@ -474,7 +481,7 @@ pub async fn run_swap_route<V: RouteVenue>(config: RouteConfig) {
                 amount,
                 swap_type: SwapType::ExactIn,
             };
-            let quote = venue.quote(request.clone()).unwrap();
+            let quote = venue.quote(request.clone(), Some(&ctx)).unwrap();
             let swap_ix = venue
                 .generate_swap_instruction(request.clone(), titan_pda)
                 .unwrap();

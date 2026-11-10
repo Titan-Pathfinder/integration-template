@@ -188,7 +188,7 @@ pub fn encode_swap_route_v3_data(amount: u64, mints: u8, swaps: &[SwapSpecInputV
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::account_caching::AccountsCache;
+    use crate::account_caching::{AccountsCache, SharedAccountsCache};
     use crate::trading_venue::{QuoteResult, SwapType, token_info::TokenInfo};
     use async_trait::async_trait;
 
@@ -232,7 +232,11 @@ mod tests {
         ) -> Result<(), TradingVenueError> {
             Ok(())
         }
-        fn quote(&self, request: QuoteRequest) -> Result<QuoteResult, TradingVenueError> {
+        fn quote(
+            &self,
+            request: QuoteRequest,
+            _ctx: Option<&dyn SharedAccountsCache>,
+        ) -> Result<QuoteResult, TradingVenueError> {
             Ok(QuoteResult {
                 input_mint: request.input_mint,
                 output_mint: request.output_mint,

@@ -1,6 +1,8 @@
 pub mod rpc_cache;
+pub mod seeded_cache;
 
 use solana_account::Account;
+pub use solana_account::{AccountSharedData, ReadableAccount};
 use thiserror::Error;
 
 use async_trait::async_trait;
@@ -50,6 +52,37 @@ pub trait AccountsCache: Send + Sync {
         &self,
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<Account>>, AccountCacheError>;
+}
+
+/// Read-only, synchronous account access for the quote-time context (`ctx`).
+///
+/// Titan passes an `Option<&dyn SharedAccountsCache>` to
+/// [`TradingVenue::quote`](crate::trading_venue::TradingVenue::quote) and
+/// [`TradingVenue::bounds`](crate::trading_venue::TradingVenue::bounds). It
+/// holds the accounts the venue names in
+/// [`TradingVenue::requested_ctx`](crate::trading_venue::TradingVenue::requested_ctx)
+/// (e.g. the `Clock` sysvar, or a mint whose `supply` the price depends on),
+/// all taken from the same slot as the state loaded in `update_state()`.
+///
+/// Accounts come back as [`AccountSharedData`], whose data sits behind an
+/// `Arc`: a hit is a refcount bump, not a copy, so reading `ctx` inside
+/// `quote()` does not allocate.
+///
+/// - `Ok(Some(account))` if the account is in the context
+/// - `Ok(None)` if it is not; venues should then fall back to the state they
+///   captured in `update_state()` (or error if they have none)
+pub trait SharedAccountsCache {
+    /// Retrieve a single account by pubkey.
+    fn get_account_shared(
+        &self,
+        pubkey: &Pubkey,
+    ) -> Result<Option<AccountSharedData>, AccountCacheError>;
+
+    /// Retrieve several accounts, in the same order as `pubkeys`.
+    fn get_accounts_shared(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<AccountSharedData>>, AccountCacheError>;
 }
 
 /// Errors that may occur when using `AccountsCache`.

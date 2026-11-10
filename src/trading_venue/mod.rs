@@ -21,7 +21,7 @@ use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    account_caching::AccountsCache,
+    account_caching::{AccountsCache, SharedAccountsCache},
     trading_venue::{
         bounds::find_boundaries, error::TradingVenueError, protocol::PoolProtocol,
         token_info::TokenInfo,
@@ -231,6 +231,22 @@ pub trait TradingVenue {
     /// orderbooks, or other relevant on-chain state.
     async fn update_state(&mut self, cache: &dyn AccountsCache) -> Result<(), TradingVenueError>;
 
+    /// The extra accounts this venue reads from the quote-time `ctx`
+    /// ([`SharedAccountsCache`]) — e.g. the `Clock` sysvar for venues whose
+    /// pricing is time-dependent, or a share/LP mint whose `supply` the price
+    /// depends on.
+    ///
+    /// Titan pre-populates `ctx` with these accounts before quoting, every one
+    /// taken from the same slot as the state loaded in `update_state()`, so a
+    /// venue that reads them from `ctx` prices against a consistent snapshot.
+    ///
+    /// Defaults to none; venues that read `ctx` override it to declare those
+    /// pubkeys. A venue must not read any account from `ctx` that it does not
+    /// list here.
+    fn requested_ctx(&self) -> Vec<Pubkey> {
+        vec![]
+    }
+
     /// Compute a quote for the given swap parameters.
     ///
     /// **Implementer requirement:** the venue **must** handle zero input amounts
@@ -270,7 +286,19 @@ pub trait TradingVenue {
     /// These invariants are checked directly by the pricing tests shipped with
     /// this template (monotonicity and mean-value-theorem tests). A venue whose
     /// `price` is inconsistent with its `expected_output` will fail them.
-    fn quote(&self, request: QuoteRequest) -> Result<QuoteResult, TradingVenueError>;
+    ///
+    /// # Quote-time context
+    ///
+    /// `ctx` carries the accounts named in [`Self::requested_ctx`], read via
+    /// [`SharedAccountsCache::get_account_shared`]. It may be `None`, and an
+    /// account may be missing from it: a venue should then fall back to the
+    /// state it captured in `update_state()`, or return an error if it has
+    /// none. Venues that request nothing ignore it.
+    fn quote(
+        &self,
+        request: QuoteRequest,
+        ctx: Option<&dyn SharedAccountsCache>,
+    ) -> Result<QuoteResult, TradingVenueError>;
 
     /// Construct the transaction instruction needed to execute a swap.
     ///
@@ -290,18 +318,27 @@ pub trait TradingVenue {
     /// generating fallback limits.
     ///
     /// `tkn_in_ind` and `tkn_out_ind` refer to token indices in `get_token_info()`.
-    fn bounds(&self, tkn_in_ind: u8, tkn_out_ind: u8) -> Result<(u64, u64), TradingVenueError> {
+    /// `ctx` is forwarded to every `quote()` call (see [`Self::quote`]).
+    fn bounds(
+        &self,
+        tkn_in_ind: u8,
+        tkn_out_ind: u8,
+        ctx: Option<&dyn SharedAccountsCache>,
+    ) -> Result<(u64, u64), TradingVenueError> {
         let input_mint = self.get_token(tkn_in_ind as usize)?.pubkey;
         let output_mint = self.get_token(tkn_out_ind as usize)?.pubkey;
 
         // Closure for boundary-finding—performs `ExactIn` quotes at various x.
         let f = |x: u64| {
-            self.quote(QuoteRequest {
-                amount: x,
-                swap_type: SwapType::ExactIn,
-                input_mint,
-                output_mint,
-            })
+            self.quote(
+                QuoteRequest {
+                    amount: x,
+                    swap_type: SwapType::ExactIn,
+                    input_mint,
+                    output_mint,
+                },
+                ctx,
+            )
         };
 
         find_boundaries(&f)

@@ -35,6 +35,7 @@ use assert_no_alloc::assert_no_alloc;
 
 use titan_integration_template::account_caching::AccountsCache;
 use titan_integration_template::account_caching::rpc_cache::RpcClientCache;
+use titan_integration_template::account_caching::seeded_cache::SeededCache;
 use titan_integration_template::trading_venue::{
     FromAccount, QuoteRequest, SwapType, TradingVenue,
 };
@@ -193,8 +194,12 @@ async fn sync_clock(cache: &RpcClientCache, litesvm: &mut LiteSVM) {
 }
 
 /// Fetch the pool, build the venue, and bring it to a fully-updated state.
-/// Returns the venue plus the RPC cache it was loaded through (reused for sims).
-async fn build_venue<V: SuiteVenue>(rpc_url: String, pool: Pubkey) -> (V, RpcClientCache) {
+/// Returns the venue, the RPC cache it was loaded through (reused for sims),
+/// and the quote-time `ctx` holding every account in `requested_ctx()`.
+async fn build_venue<V: SuiteVenue>(
+    rpc_url: String,
+    pool: Pubkey,
+) -> (V, RpcClientCache, SeededCache) {
     let rpc = RpcClient::new(rpc_url);
     let account = rpc
         .get_account(&pool)
@@ -206,7 +211,23 @@ async fn build_venue<V: SuiteVenue>(rpc_url: String, pool: Pubkey) -> (V, RpcCli
         .update_state(&cache)
         .await
         .expect("venue state update failed");
-    (venue, cache)
+    let ctx = build_ctx(&venue, &cache).await;
+    (venue, cache, ctx)
+}
+
+/// Seed the quote-time `ctx` with the accounts the venue names in
+/// `requested_ctx()`, read through the same cache as its state (so the
+/// simulation sees the same accounts).
+async fn build_ctx(venue: &dyn TradingVenue, cache: &dyn AccountsCache) -> SeededCache {
+    let keys = venue.requested_ctx();
+    let accounts = cache
+        .get_accounts(&keys)
+        .await
+        .expect("failed to fetch requested_ctx accounts");
+    for (key, account) in keys.iter().zip(&accounts) {
+        assert!(account.is_some(), "requested_ctx account {key} not found");
+    }
+    SeededCache::from_accounts(keys.into_iter().zip(accounts))
 }
 
 /// Execute a swap through the venue's generated instruction inside LiteSVM and
@@ -305,7 +326,7 @@ pub async fn construction<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
 
     let token_info = venue.get_token_info();
     log::info!("Loaded token info: {:#?}", token_info);
@@ -315,16 +336,18 @@ pub async fn construction<V: SuiteVenue>(config: &SuiteConfig) {
     );
 
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lower, upper) =
-            assert_no_alloc(|| venue.bounds(in_idx, out_idx)).expect("boundary search failed");
+        let (lower, upper) = assert_no_alloc(|| venue.bounds(in_idx, out_idx, Some(&ctx)))
+            .expect("boundary search failed");
         assert!(lower < upper, "lower bound must be < upper bound");
 
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
         for (edge, amount) in [("lower", lower), ("upper", upper)] {
-            let q = assert_no_alloc(|| venue.quote(exact_in(input_mint, output_mint, amount)))
-                .unwrap_or_else(|_| panic!("{edge}-bound quote failed"));
+            let q = assert_no_alloc(|| {
+                venue.quote(exact_in(input_mint, output_mint, amount), Some(&ctx))
+            })
+            .unwrap_or_else(|_| panic!("{edge}-bound quote failed"));
             assert!(
                 !q.not_enough_liquidity,
                 "{edge} bound: insufficient liquidity"
@@ -348,7 +371,7 @@ pub async fn zero_input_spot_price<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
     assert!(venue.get_token_info().len() >= 2);
 
     for (in_idx, out_idx) in venue.directions_num() {
@@ -356,7 +379,7 @@ pub async fn zero_input_spot_price<V: SuiteVenue>(config: &SuiteConfig) {
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
         let quote = venue
-            .quote(exact_in(input_mint, output_mint, 0))
+            .quote(exact_in(input_mint, output_mint, 0), Some(&ctx))
             .expect("zero-input quote must not error");
         assert_eq!(
             quote.expected_output, 0,
@@ -380,14 +403,14 @@ pub async fn bound_simulation<V: SuiteVenue>(config: &SuiteConfig) {
     if !programs_ready(&config.programs) {
         return;
     }
-    let (venue, cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
     let (mut litesvm, keypair) = setup_litesvm(&config.programs);
     sync_clock(&cache, &mut litesvm).await;
 
     assert!(venue.get_token_info().len() >= 2);
 
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lower, upper) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lower, upper) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -395,7 +418,7 @@ pub async fn bound_simulation<V: SuiteVenue>(config: &SuiteConfig) {
             let request = exact_in(input_mint, output_mint, bound);
             let sim =
                 sim_quote_request(&venue, &cache, request.clone(), &mut litesvm, &keypair).await;
-            let quote = venue.quote(request).unwrap();
+            let quote = venue.quote(request, Some(&ctx)).unwrap();
             assert_eq!(
                 quote.expected_output.abs_diff(sim),
                 0,
@@ -417,13 +440,13 @@ pub async fn random_samples<V: SuiteVenue>(config: &SuiteConfig) {
     if !programs_ready(&config.programs) {
         return;
     }
-    let (venue, cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
     let (mut litesvm, keypair) = setup_litesvm(&config.programs);
     sync_clock(&cache, &mut litesvm).await;
 
     let mut rng = test_rng();
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lb, ub) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lb, ub) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -432,7 +455,7 @@ pub async fn random_samples<V: SuiteVenue>(config: &SuiteConfig) {
             let request = exact_in(input_mint, output_mint, amount);
             let sim =
                 sim_quote_request(&venue, &cache, request.clone(), &mut litesvm, &keypair).await;
-            let quote = venue.quote(request).unwrap();
+            let quote = venue.quote(request, Some(&ctx)).unwrap();
             assert_eq!(
                 quote.expected_output.abs_diff(sim),
                 0,
@@ -450,11 +473,11 @@ pub async fn monotone<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
 
     let mut rng = test_rng();
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lb, ub) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lb, ub) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -466,7 +489,7 @@ pub async fn monotone<V: SuiteVenue>(config: &SuiteConfig) {
         let mut prev = 0;
         for amount in amounts {
             let out = venue
-                .quote(exact_in(input_mint, output_mint, amount))
+                .quote(exact_in(input_mint, output_mint, amount), Some(&ctx))
                 .expect("quote failed")
                 .expected_output;
             assert!(
@@ -486,11 +509,11 @@ pub async fn quoting_speed<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
 
     let mut rng = test_rng();
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lb, ub) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lb, ub) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -500,7 +523,7 @@ pub async fn quoting_speed<V: SuiteVenue>(config: &SuiteConfig) {
         let start = Instant::now();
         for amount in amounts {
             let _ = venue
-                .quote(exact_in(input_mint, output_mint, amount))
+                .quote(exact_in(input_mint, output_mint, amount), Some(&ctx))
                 .expect("quote failed");
         }
         let avg = start.elapsed().as_secs_f64() / ITERATIONS as f64;
@@ -520,12 +543,12 @@ pub async fn price_monotone<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
     assert!(venue.get_token_info().len() >= 2);
 
     let mut rng = test_rng();
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lb, ub) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lb, ub) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -537,7 +560,7 @@ pub async fn price_monotone<V: SuiteVenue>(config: &SuiteConfig) {
         let mut prev_price = f64::INFINITY;
         for amount in amounts {
             let price = venue
-                .quote(exact_in(input_mint, output_mint, amount))
+                .quote(exact_in(input_mint, output_mint, amount), Some(&ctx))
                 .expect("quote failed")
                 .price;
             assert!(
@@ -563,11 +586,11 @@ pub async fn mean_value_theorem<V: SuiteVenue>(config: &SuiteConfig) {
     let Some(rpc_url) = rpc_url_or_skip() else {
         return;
     };
-    let (venue, _cache) = build_venue::<V>(rpc_url, config.pool).await;
+    let (venue, _cache, ctx) = build_venue::<V>(rpc_url, config.pool).await;
     assert!(venue.get_token_info().len() >= 2);
 
     for (in_idx, out_idx) in venue.directions_num() {
-        let (lb, ub) = venue.bounds(in_idx, out_idx).unwrap();
+        let (lb, ub) = venue.bounds(in_idx, out_idx, Some(&ctx)).unwrap();
         let input_mint = venue.get_token(in_idx as usize).unwrap().pubkey;
         let output_mint = venue.get_token(out_idx as usize).unwrap().pubkey;
 
@@ -578,10 +601,10 @@ pub async fn mean_value_theorem<V: SuiteVenue>(config: &SuiteConfig) {
                 continue;
             }
             let qa = venue
-                .quote(exact_in(input_mint, output_mint, a))
+                .quote(exact_in(input_mint, output_mint, a), Some(&ctx))
                 .expect("quote at a");
             let qb = venue
-                .quote(exact_in(input_mint, output_mint, b))
+                .quote(exact_in(input_mint, output_mint, b), Some(&ctx))
                 .expect("quote at b");
             if qb.expected_output <= qa.expected_output {
                 continue; // flat step carries no rate information
