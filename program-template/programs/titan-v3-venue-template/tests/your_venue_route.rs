@@ -1,29 +1,32 @@
-//! Your venue's swap-route test — the same end-to-end suite the example passes,
-//! run against `YourVenue`. Red once you've implemented YourVenue and pointed the
-//! config below at a real pool + program (with SOLANA_RPC_URL set and the route
-//! program built); SKIPs cleanly until then.
+//! Coffer swap-route test — the same end-to-end suite the example
+//! passes, run against `CofferVenue` through `swap_route_v3` in LiteSVM.
+//! Runs every declared direction of each pool below; SKIPs cleanly without
+//! SOLANA_RPC_URL / a fresh `make build-program`.
 
 mod common;
 
-use common::{RouteConfig, run_swap_route};
-use solana_pubkey::Pubkey;
-use titan_integration_template::your_venue::YourVenue;
+use common::{run_swap_route, RouteConfig};
+use solana_pubkey::{pubkey, Pubkey};
+use titan_integration_template::coffer_venue::{CofferVenue, COFFER_PROGRAM_ID};
 
-fn pool() -> Pubkey {
-    // FILL_IN: a real pool/market account for your venue to route through.
-    todo!("set your_venue_route.rs pool to a real pool or market account")
-}
+/// A 4-token pool with a Token-2022 mint, and a 2-token 80/20 pool.
+const POOLS: [Pubkey; 2] = [
+    pubkey!("5dDezuaofYZUBdab8gSWY3ys86VbMrTxsRuf3ayqe8GJ"),
+    pubkey!("BN4wpuvb4TyNbNigMW9cWYYrBfCH2NcquGp4AKxe8Lxm"),
+];
 
 fn venue_programs() -> Vec<Pubkey> {
-    // FILL_IN: your venue's program(s) the swap CPI invokes.
-    todo!("set your_venue_route.rs venue_programs to your route CPI dependencies")
+    vec![COFFER_PROGRAM_ID]
 }
 
 #[tokio::test]
-async fn swap_route_both_directions() {
-    run_swap_route::<YourVenue>(RouteConfig {
-        pool: pool(),
-        venue_programs: venue_programs(),
-    })
-    .await;
+async fn swap_route_all_directions() {
+    for pool in POOLS {
+        eprintln!("--- pool {pool}");
+        run_swap_route::<CofferVenue>(RouteConfig {
+            pool,
+            venue_programs: venue_programs(),
+        })
+        .await;
+    }
 }

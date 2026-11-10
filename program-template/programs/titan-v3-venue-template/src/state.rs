@@ -6,9 +6,12 @@ pub const MAX_MINTS: usize = 12;
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Copy, Eq, Debug)]
 pub enum Venue {
     RaydiumAmm,
-    // FILL_IN: add your venue variant here. Include any CPI parameters the
-    // router must pass to your venue adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
+    /// Coffer Coffer `swap`: the program takes the pool slot indices of
+    /// the input and output mints as instruction arguments.
+    Coffer {
+        token_in_index: u8,
+        token_out_index: u8,
+    },
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Copy, Eq, Debug)]

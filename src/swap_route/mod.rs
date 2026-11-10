@@ -49,15 +49,12 @@ pub const ROUTE_WEIGHT_ALL: u32 = 1_000_000_000;
 #[derive(BorshSerialize, BorshDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Venue {
     RaydiumAmm,
-    // FILL_IN: add your venue variant here, in the SAME position as in
-    // `state.rs`. Include any CPI parameters the router must pass to your venue
-    // adapter, such as direction flags.
-    TemplateVenue { zero_for_one: bool },
-}
-
-#[allow(dead_code)]
-fn fill_in_route_venue_variant() -> ! {
-    todo!("add your route Venue variant in the same position as the program enum")
+    /// Coffer Coffer `swap`. The program needs the pool slot indices of
+    /// the two mints: direction is not implied by account order alone.
+    Coffer {
+        token_in_index: u8,
+        token_out_index: u8,
+    },
 }
 
 impl Venue {
@@ -96,10 +93,19 @@ pub fn protocol_to_venue(
 ) -> Result<Venue, TradingVenueError> {
     match venue.protocol() {
         PoolProtocol::RaydiumAMM => Ok(Venue::RaydiumAmm),
-        // FILL_IN: map your PoolProtocol variant to your Venue variant.
-        PoolProtocol::YourPoolProtocol => {
-            let _ = (venue, request);
-            todo!("map YourPoolProtocol to your Venue variant")
+        PoolProtocol::Coffer => {
+            let tokens = venue.get_token_info();
+            let index_of = |mint: &Pubkey| {
+                tokens
+                    .iter()
+                    .position(|t| t.pubkey == *mint)
+                    .and_then(|i| u8::try_from(i).ok())
+                    .ok_or(TradingVenueError::InvalidMint(mint.into()))
+            };
+            Ok(Venue::Coffer {
+                token_in_index: index_of(&request.input_mint)?,
+                token_out_index: index_of(&request.output_mint)?,
+            })
         }
     }
 }
@@ -343,15 +349,49 @@ mod tests {
     fn venue_borsh_bytes_are_stable() {
         assert_eq!(Venue::RaydiumAmm.to_borsh_bytes(), vec![0]);
         assert_eq!(
-            Venue::TemplateVenue {
-                zero_for_one: false,
+            Venue::Coffer {
+                token_in_index: 0,
+                token_out_index: 1,
             }
             .to_borsh_bytes(),
-            vec![1, 0]
+            vec![1, 0, 1]
         );
         assert_eq!(
-            Venue::TemplateVenue { zero_for_one: true }.to_borsh_bytes(),
-            vec![1, 1]
+            Venue::Coffer {
+                token_in_index: 7,
+                token_out_index: 3,
+            }
+            .to_borsh_bytes(),
+            vec![1, 7, 3]
         );
+    }
+
+    #[test]
+    fn coffer_maps_mints_to_slot_indices() {
+        let request = request();
+        let tokens = vec![
+            TokenInfo {
+                pubkey: Pubkey::new_from_array([2u8; 32]),
+                ..Default::default()
+            },
+            TokenInfo {
+                pubkey: Pubkey::new_from_array([5u8; 32]),
+                ..Default::default()
+            },
+            TokenInfo {
+                pubkey: Pubkey::new_from_array([1u8; 32]),
+                ..Default::default()
+            },
+        ];
+        let coffer = mock_venue(PoolProtocol::Coffer, tokens);
+        assert_eq!(
+            protocol_to_venue(&coffer, &request).unwrap(),
+            Venue::Coffer {
+                token_in_index: 2,
+                token_out_index: 0,
+            }
+        );
+        let unknown = mock_venue(PoolProtocol::Coffer, vec![]);
+        assert!(protocol_to_venue(&unknown, &request).is_err());
     }
 }

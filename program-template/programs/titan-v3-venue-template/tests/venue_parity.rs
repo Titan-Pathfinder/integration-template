@@ -14,18 +14,47 @@ fn venue_enum_matches_route_builder() {
     let cases = [
         (ProgramVenue::RaydiumAmm, RouteBuilderVenue::RaydiumAmm),
         (
-            ProgramVenue::TemplateVenue {
-                zero_for_one: false,
+            ProgramVenue::Coffer {
+                token_in_index: 0,
+                token_out_index: 1,
             },
-            RouteBuilderVenue::TemplateVenue {
-                zero_for_one: false,
+            RouteBuilderVenue::Coffer {
+                token_in_index: 0,
+                token_out_index: 1,
             },
         ),
         (
-            ProgramVenue::TemplateVenue { zero_for_one: true },
-            RouteBuilderVenue::TemplateVenue { zero_for_one: true },
+            ProgramVenue::Coffer {
+                token_in_index: 9,
+                token_out_index: 4,
+            },
+            RouteBuilderVenue::Coffer {
+                token_in_index: 9,
+                token_out_index: 4,
+            },
+        ),
+        (
+            ProgramVenue::Coffer {
+                token_in_index: 255,
+                token_out_index: 0,
+            },
+            RouteBuilderVenue::Coffer {
+                token_in_index: 255,
+                token_out_index: 0,
+            },
         ),
     ];
+
+    // The CofferPool variant must be discriminant 1 followed by the two u8s.
+    assert_eq!(
+        ProgramVenue::Coffer {
+            token_in_index: 6,
+            token_out_index: 2,
+        }
+        .try_to_vec()
+        .unwrap(),
+        vec![1, 6, 2]
+    );
 
     for (program, route_builder) in cases {
         let program_bytes = program.try_to_vec().unwrap();

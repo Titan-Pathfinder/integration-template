@@ -10,6 +10,8 @@
 /program-template/program-dumps/
 # Program binaries fetched by `make dump-programs` for the off-chain sim tests
 /programs/*.so
+# ...except the pinned production Coffer build the offline fixture suite runs
+!/programs/8iQtGj9mcUfFUGaiCpPy89swC3s8YTC8FhVZWfgeZhwu.so
 
 # Cargo package / release artifacts
 /*.crate
@@ -76,3 +78,6 @@ Desktop.ini
 
 # Local tooling
 .cache/
+/scripts/local-stand/ledger/
+/scripts/local-stand/validator.log
+/scripts/local-stand/logs/

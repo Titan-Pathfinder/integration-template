@@ -179,7 +179,7 @@ fn integration_scorecard() {
     // Structural integrity: every layer file must exist.
     for f in [
         "src/example/mod.rs",
-        "src/your_venue/mod.rs",
+        "src/coffer_venue/mod.rs",
         "src/swap_route/mod.rs",
         "tests/venue_creation.rs",
         "tests/your_venue_creation.rs",
@@ -196,7 +196,7 @@ fn integration_scorecard() {
     let swap_route = read("src/swap_route/mod.rs");
     let state = read(&format!("{PROGRAM_SRC}/state.rs"));
     let template_venue = read(&format!("{PROGRAM_SRC}/instructions/venues/template.rs"));
-    let your_venue = read("src/your_venue/mod.rs");
+    let your_venue = read("src/coffer_venue/mod.rs");
     let venue_creation = read("tests/venue_creation.rs");
     let your_venue_creation = read("tests/your_venue_creation.rs");
 

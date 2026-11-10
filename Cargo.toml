@@ -42,12 +42,18 @@ env_logger = "0.11.3"
 spl-token = { version = "7", features = ["no-entrypoint"] }
 spl-token-2022 = { version = "^9", features = ["no-entrypoint"]}
 spl-associated-token-account = "6"
+spl-token-metadata-interface = "0.6"
+solana-transaction-status-client-types = "2.2.1"
 litesvm =  { version = "^0.6.1"}
 rand = "0.9.2"
 assert_no_alloc = { version = "1.1.2", default-features = false }
 
 # Used only for the construction allocation check. Normal tests, including
 # `quoting_speed`, run under true `--release`.
+[[bin]]
+name = "local-stand"
+path = "src/bin/local_stand.rs"
+
 [profile.release-debug]
 inherits = "release"
 debug-assertions = true

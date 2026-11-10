@@ -13,16 +13,14 @@ use std::fmt::Display;
 /// variants (or add their own) so the router and UI can correctly identify and
 /// categorize the venue.
 ///
-/// `YourPoolProtocol` is provided as a template for new integrators.
-///
 /// Protocols included here:
-/// - `YourPoolProtocol`: Example/custom protocol placeholder.
+/// - `CofferPool`: Coffer / Cube DEX weighted AMM with virtual liquidity
+///   (program `8iQtGj9mcUfFUGaiCpPy89swC3s8YTC8FhVZWfgeZhwu`).
 /// - `RaydiumAMM`: Raydium’s constant-product AMM on Solana.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PoolProtocol {
-    /// Example/custom protocol — integrators should rename or replace this
-    /// with their own protocol name.
-    YourPoolProtocol,
+    /// Coffer's weighted AMM. Displayed as "Coffer".
+    Coffer,
 
     /// Raydium’s AMM (x*y=k) pools on Solana.
     RaydiumAMM,
@@ -44,7 +42,7 @@ impl From<PoolProtocol> for String {
     /// exposes protocol metadata via API.
     fn from(protocol: PoolProtocol) -> Self {
         match protocol {
-            PoolProtocol::YourPoolProtocol => "YourPoolProtocol".to_string(),
+            PoolProtocol::Coffer => "Coffer".to_string(),
             PoolProtocol::RaydiumAMM => "RaydiumAMM".to_string(),
         }
     }

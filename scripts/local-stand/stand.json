@@ -1,0 +1,1276 @@
+{
+  "rpc": "http://127.0.0.1:8899",
+  "wallet": "964CWCQkqc4ogpyZP5YiXLmpFqb785nKAd66tRYUFfsU",
+  "config": "E9K7CxPXpAEp49Usgxcxxm9DR8qUFXyvpwLjKrqqtrbY",
+  "router": "T1TANpTeScyeqVzzgNViGDNrkQ6qHz9KrSBS4aNXvGT",
+  "titan_pda": "EKnkqavTZT9kFZbDLLQGJZpZFkEenfcT35RUQdVvd7Ra",
+  "created_at_unix": 1789765626,
+  "mints": [
+    {
+      "name": "BONK",
+      "address": "B3osE2f37uPKpu31mCzfxMDTbPyUEqNVHabTZsSiBCrQ",
+      "decimals": 5,
+      "token_2022": false
+    },
+    {
+      "name": "USDC",
+      "address": "82uXxxhXarKwtLxw6ajkGa7SEi8mMMujcwTdYNut55mK",
+      "decimals": 6,
+      "token_2022": false
+    },
+    {
+      "name": "SOLX",
+      "address": "CVaaFUEDy8rH2Uk4E1DbkEqFTPDu9gTMkMvJQgiN11ea",
+      "decimals": 9,
+      "token_2022": false
+    },
+    {
+      "name": "MEME22",
+      "address": "FRFRb13FLMaZD9q5vbrn8ei4u3FDUGuth4pSPDaNCasB",
+      "decimals": 6,
+      "token_2022": true
+    }
+  ],
+  "pools": [
+    {
+      "case": "a_cap_only",
+      "description": "cap 10%, surge off (slope_high = 0)",
+      "address": "Fc5z4ZsTDwLaYkUEXJMF392kiu3TpJdDCQkopYr8Gscn",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "b_thr0_kink50",
+      "description": "cap 10%, threshold 0, 0/50/100%, kink 50",
+      "address": "8G73mpZVjmocjd4bzfopxf31SdzvWz42wMm4DnuRoeub",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "c_thr80_nokink",
+      "description": "cap 10%, threshold 80%, 0/0/100%, no kink",
+      "address": "HwfRohJzwkAJQypgoghadxgBpGY342wMYNzWwctLy35n",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "d_thr80_full_fee",
+      "description": "cap 10%, threshold 80%, 100/100/100% (all output above threshold taken)",
+      "address": "4jtH5VwJmF3MEDXwGZneQHKJGFKrCXhZypwcYmtLdrRt",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 10000,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 10000,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "e_thr999_nokink",
+      "description": "cap 10%, threshold 99.9%, 0/50/100% (kink 99 is rejected on-chain: kink must exceed the threshold)",
+      "address": "2qZDN9wgR7CSc2MB5vAN8f42ypG7h1oULqqJqxocXttE",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 9990,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "e2_thr9899_kink99",
+      "description": "cap 10%, threshold 98.99%, 0/50/100%, kink 99 (the closest legal kink-99 config)",
+      "address": "GUKw6d2WvF1oZMf7dYA9XpCyudfj11RUQPR56dNKV6da",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 9899,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 99
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "f_flat",
+      "description": "cap 10%, threshold 50%, flat 5/5/5%, kink 60 (kink must exceed the threshold on-chain)",
+      "address": "A9863jm9zqBVBpPLWxNqaMBd1LZ6nwXyYU157HygXYX2",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 500,
+          "fee_slope_high_pct": 500,
+          "fee_slope_mid_pct": 500,
+          "fee_kink_pct": 60
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "g_kink1",
+      "description": "cap 10%, threshold 0, 0/20/100%, kink 1",
+      "address": "FeSRcBhVvpkeYXpGtWLNgb1SDwNRpYPRNEt88u46w9f3",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 2000,
+          "fee_kink_pct": 1
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "g_kink99",
+      "description": "cap 10%, threshold 0, 0/20/100%, kink 99 (kink 100 is rejected on-chain)",
+      "address": "G2TzpUS22KSZejxAPEw7wn1PCXmATJDs9etSKfWjWD1M",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 2000,
+          "fee_kink_pct": 99
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "h_cap100",
+      "description": "cap 100%, threshold 50%, 0/25/50%, kink 75",
+      "address": "6e8FeLn3eohjHucfTEGSGhWqVd1v45gTaHcKKsAwKZzj",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 10000,
+          "period_length": 3600,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 2500,
+          "fee_kink_pct": 75
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "h_cap1",
+      "description": "cap 1%, threshold 50%, 0/25/50%, kink 75",
+      "address": "9dyMvT8EvczN95iEQCfqZSP6V65q2NreWZuUj8RCDFmb",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 100,
+          "period_length": 3600,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 2500,
+          "fee_kink_pct": 75
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "i_short_period",
+      "description": "cap 10%, period 20 s, threshold 50%, 0/20/50%, kink 80",
+      "address": "8MDM1kE89nmiNe4sNy78bLBYJAt15Sm2Y6Y1usDRpHyb",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 20,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 2000,
+          "fee_kink_pct": 80
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "j_surge_no_cap",
+      "description": "surge curve configured, cap disabled (max_selloff_pct = 0): surge must be inert",
+      "address": "88nSNy3sjfVYAY5DsAVDGnqbSjavDupjFK7D6AbuDFn1",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 100,
+          "fee_slope_high_pct": 3000,
+          "fee_slope_mid_pct": 500,
+          "fee_kink_pct": 75
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "k_inactive",
+      "description": "config b + BONK deactivated (set_token_active false)",
+      "address": "8WN1e4MJSdBVMrz5ERnVvz3iobKLxeQra9KUWrNFeucc",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [
+        0
+      ],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "l_swaps_off",
+      "description": "config a + swaps disabled",
+      "address": "GtYUkVDb5miUtmQF1vmtNKSxHRrVi5Fh7xV56xhw4o4m",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": false,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "l_pool_off",
+      "description": "config a + pool disabled (protocol admin)",
+      "address": "D6t6bSKRKSn39cLQUc3vMNgxF9N9KU41pefqdwFFnfSC",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": false,
+      "dynamic": false
+    },
+    {
+      "case": "w8020_b",
+      "description": "80/20 BONK/USDC, config b",
+      "address": "2jCgNXPNxyfrEMEbb9zHByJNBUiSaSEyBUTmFc9nnyAk",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        8000,
+        2000
+      ],
+      "swap_fee_rate": 5000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "w8020_c",
+      "description": "80/20 BONK/USDC, config c",
+      "address": "fvCa2mUyDzatTKbPsyrV3h2nFL2PiQNWS3g8DJCMpbS",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        8000,
+        2000
+      ],
+      "swap_fee_rate": 5000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "m_four_token",
+      "description": "SOL/BONK/USDC/MEME22 25% each; BONK cap 10% thr 50% 0/10/30% kink 70; MEME22 (Token-2022) cap 5% thr 80% 0/0/50%",
+      "address": "EKjsKoTUTCejk8LGQxUuGAX9G8k7LhcRFYKcFgz6xRoN",
+      "tokens": [
+        "SOLX",
+        "BONK",
+        "USDC",
+        "MEME22"
+      ],
+      "weights": [
+        2500,
+        2500,
+        2500,
+        2500
+      ],
+      "swap_fee_rate": 2500,
+      "selloff": [
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 3000,
+          "fee_slope_mid_pct": 1000,
+          "fee_kink_pct": 70
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 500,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": false
+    },
+    {
+      "case": "dyn_b",
+      "description": "dynamic: config b",
+      "address": "8Ct4cUxisYyaqNFZ7mEUyYWBD7yJbzxeRkrFWF1KzPkV",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_c",
+      "description": "dynamic: config c",
+      "address": "5f7PvBtryYS23n7er5dWSXSVK1v7vRjuGYXDywv6bL2g",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_d",
+      "description": "dynamic: config d (100% fee above threshold)",
+      "address": "BCnjym5iizJa6pFX3wJCXrmAFJUCSyF5wc2XW674irjv",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 10000,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 10000,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_short",
+      "description": "dynamic: 20 s period, real-time rotation",
+      "address": "DtDHmnTCoEstzxMzcxksPcnfMMArgv4VEvrEhp9kYcTR",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 20,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 2000,
+          "fee_kink_pct": 80
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_8020_c",
+      "description": "dynamic: 80/20, config c",
+      "address": "ADCYC3aL39gzYHAYxFVMJny1KdsQF1Kdypu61TGhCvJU",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        8000,
+        2000
+      ],
+      "swap_fee_rate": 5000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 8000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_toggle",
+      "description": "dynamic: config b, deactivate / swaps / pool toggles",
+      "address": "HiKAkCVneYyJtgQaySNgTYre3bHgpz6jgmFf1gsm6vmh",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "dyn_router",
+      "description": "dynamic: config b, chunked sells through the router",
+      "address": "HUFA6CFFwZ8zNNaZEMcsQgtHnG3JN2zqMP8Yw5mQV55i",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_short",
+      "description": "range manager: 30 s window, cap 10%, thr 50%, 0/20/50%, kink 80 — vb moves mid-window, rotation, no-refresh execution",
+      "address": "BWfFT7EnRP9fhxnxyxEHHYrCHoejoVh6zJToyfqRvT3a",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 30,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 5000,
+          "fee_slope_mid_pct": 2000,
+          "fee_kink_pct": 80
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_w_surge",
+      "description": "range manager: weight moves 50/50 -> 55/45 -> 45/55 with config b (surge)",
+      "address": "5VoGzXYPKKCtZcnHu3PdcdWTYYfn4GGsDBguToKcLQqA",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_w_cap",
+      "description": "range manager: weight moves 50/50 -> 55/45 -> 45/55 with the cap only (no surge)",
+      "address": "DYKZ4B8Dk28LRPcE4eDdfgxcmJ2RPYsxxZqCSYhaTCZQ",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_lev",
+      "description": "range manager: USDC vb pushed to 16x so the LP balance caps output before the window, then back",
+      "address": "2DXGpnMPR98S8AsA46rzX1g9j92jTJtrnq6cSsqUagHe",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 5000,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 3000,
+          "fee_slope_mid_pct": 1000,
+          "fee_kink_pct": 70
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_cfg",
+      "description": "admin: set_max_selloff reconfigured between quotes (cap raised / lowered / curve changed / disabled / re-enabled)",
+      "address": "9TfU8MNkzAeuXVPU6gm9CnLxgxsViY5ih3qHPMHrjXCK",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    },
+    {
+      "case": "rm_liq",
+      "description": "admin: add_liquidity / remove_liquidity between quotes (window rescale)",
+      "address": "4RCxgZN9JfhytuTsc2c5wwFA4YdHxSsCkCZZFbKTLExT",
+      "tokens": [
+        "BONK",
+        "USDC"
+      ],
+      "weights": [
+        5000,
+        5000
+      ],
+      "swap_fee_rate": 3000,
+      "selloff": [
+        {
+          "max_selloff_pct": 1000,
+          "period_length": 3600,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 10000,
+          "fee_slope_mid_pct": 5000,
+          "fee_kink_pct": 50
+        },
+        {
+          "max_selloff_pct": 0,
+          "period_length": 0,
+          "fee_threshold_pct": 0,
+          "fee_slope_low_pct": 0,
+          "fee_slope_high_pct": 0,
+          "fee_slope_mid_pct": 0,
+          "fee_kink_pct": 0
+        }
+      ],
+      "inactive_tokens": [],
+      "swaps_enabled": true,
+      "pool_enabled": true,
+      "dynamic": true
+    }
+  ]
+}

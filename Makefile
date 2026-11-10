@@ -2,6 +2,7 @@
 #
 #   make build-program   run anchor build for the route program
 #   make check-structure lib tests + scorecard assertion + enum parity
+#   make test-coffer-offline Coffer math/domain/refresh + pinned-ELF parity
 #   make test-example   reference (Raydium) suite — must be green / skipped
 #   make test-venue      YOUR venue's suite (red until you implement YourVenue)
 #   make scorecard       print the integration scorecard only
@@ -22,7 +23,11 @@
 RAYDIUM := 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 SPL_CALC_1 := sspUE1vrh7xRoXxGsg7vR1zde2WdGtJRbyK9uRumBDy
 SPL_CALC_2 := ssmbu3KZxgonUtjEMCKspZzxvUQCxAFnyh1rcHUeEDo
-PROGRAMS := $(RAYDIUM) $(SPL_CALC_1) $(SPL_CALC_2)
+# Coffer program. The production build is committed at programs/<id>.so
+# (sha256 5128c578…, pinned by tests/coffer_fixtures.rs), so this only
+# dumps it on a checkout that lost the file.
+COFFER := 8iQtGj9mcUfFUGaiCpPy89swC3s8YTC8FhVZWfgeZhwu
+PROGRAMS := $(RAYDIUM) $(SPL_CALC_1) $(SPL_CALC_2) $(COFFER)
 
 DUMP_URL := $(if $(SOLANA_RPC_URL),$(SOLANA_RPC_URL),m)
 
@@ -32,7 +37,7 @@ RELEASE_PROFILE := --release
 ASSERT_PROFILE := --profile release-debug
 SCORECARD = cargo test --quiet $(RELEASE_PROFILE) --test scorecard -- --nocapture 2>/dev/null | sed -n '/^====/,/^====/p'
 
-.PHONY: build-program check-structure test-example test-venue scorecard dump-programs \
+.PHONY: build-program check-structure test-coffer-offline test-example test-venue scorecard dump-programs \
         _unit-phase _example-sim-phase _venue-phase
 
 # --- always-on checks (no RPC): unit tests, scorecard assertion, enum parity ---
@@ -101,6 +106,13 @@ build-program:
 	@cd program-template && anchor build
 
 check-structure: _unit-phase
+
+# Exact output/post-state against the committed ELF, routing-domain boundaries,
+# freeze/thaw and failed-refresh regressions. No RPC or validator required.
+# Source parity additionally uses ../contracts or COFFER_CONTRACT_SRC.
+test-coffer-offline:
+	cargo test $(RELEASE_PROFILE) --lib --test coffer_source_parity \
+		--test coffer_fixtures --test coffer_vault_freeze --test your_venue_creation
 
 test-example: _example-sim-phase
 	@echo
