@@ -8,6 +8,34 @@ The reviewed candidate is exported to upstream PR #10 at `ac06e77` for Titan
 engineering review. This is not Titan acceptance or live distribution. Dated
 checkpoints below retain the internal history before the standalone export.
 
+## Adapter deadline removed, evening 10 November
+
+Titan agreed to removing the additional 20-second execution cutoff, and the owner
+authorized the change. The instruction builder now encodes `i64::MAX` in the
+required v3 deadline field for both routed and explicit-minimum instructions.
+This adds no practical adapter expiry; Titan/frontend/wallet and Solana retain
+transaction-expiry responsibility. The Ocelot program still checks `now <= deadline`;
+its ABI and deployed code are unchanged. A zero deadline would reject, not disable.
+
+The regression holds slot-based state fixed and advances the Unix timestamp by
+21 seconds: all four captures and both directions execute directly and routed
+(16 successes), while eight controls with explicitly expired deadlines reject.
+That isolates the removed cutoff; it is not a real signing-delay/liquidity survival
+claim. The historical expiry test explicitly retains its old 1% floor and
+20-second deadline so the earlier evidence remains meaningful. Slippage guards,
+quote math, finance revision and IOC price limits are unchanged.
+
+Validation passes: 49 selected reference tests, 27 default-feature tests, 3
+program/parity tests, both host Clippy configurations and formatting. The updated
+deadline assertion fails against the preceding source. All 72 slippage successes
+and 48 atomic rollbacks still pass. Router/test-guard sources and artifacts are
+unchanged from the slippage handoff; no new SBF rebuild is needed for this host-only change.
+
+See [current policy, tests and production acceptance request](SLIPPAGE_VALIDATION.md).
+Historical sections below describe the earlier deadline policy; deadline selection
+is no longer an outstanding question. Production minimum/rollback verification,
+Clock-only host delivery, error/performance acceptance and ANT validation remain open.
+
 ## Route slippage alignment, later 10 November
 
 Following Titan's confirmed router-level slippage policy, the generic instruction

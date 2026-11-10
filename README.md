@@ -15,6 +15,8 @@ routing is not activated.
 user minimum instead of a fixed 1% Ocelot floor. This adapter change follows the
 earlier internal sign-off and requires Titan's production-router verification.
 See [implementation and 120-transaction rollback evidence](SLIPPAGE_VALIDATION.md).
+Titan subsequently agreed to removing the adapter's 20-second cutoff. The
+required deadline field is now `i64::MAX`, adding no practical adapter expiry.
 
 The complete provider passed 205 captured-state execution comparisons without an
 overquote or false acceptance; worst observed underquote is now 4.144072 bp after
@@ -66,9 +68,11 @@ execution. Following Titan's November 10 guidance, `generate_swap_instruction()`
 encodes zero venue minimum and **must only be used inside a route that enforces
 the user's final minimum**. Titan confirms its production router owns that check;
 the supplied template router does not implement it. The adapter still validates
-quote eligibility, exact input, the 20-second deadline, finance revision and the
-100 bps IOC price band. The deadline and IOC band are separate from user slippage
-and remain reference defaults pending agreement. See [slippage tests and production
+quote eligibility, exact input, finance revision and the 100 bps IOC price band.
+Both adapter builders encode `i64::MAX` in the required v3 deadline field,
+leaving transaction expiry to Titan/frontend/wallet and Solana. The on-chain
+deadline comparison is unchanged; zero would mean expired, not disabled.
+The IOC band remains separate from user slippage. See [slippage tests and production
 acceptance request](SLIPPAGE_VALIDATION.md). The caller must preserve the
 quoted input. Variable intermediate amounts and independently quoted repeated
 visits to the same Ocelot market are not supported.

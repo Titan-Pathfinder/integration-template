@@ -272,10 +272,9 @@ pub fn build(
             &order,
             counts,
             min_output,
-            s.clock
-                .unix_timestamp
-                .checked_add(20)
-                .ok_or(invalid("deadline overflow"))?,
+            // The v3 ABI requires a deadline and checks `now <= deadline`.
+            // Titan owns transaction expiry; add no adapter-specific cutoff.
+            i64::MAX,
             s.revision,
         ),
     })

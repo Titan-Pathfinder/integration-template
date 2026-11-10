@@ -12,8 +12,11 @@ leg. This submission adopts that contract; it is not production activation.
 - `build_with_minimum` continues to require a caller-selected positive minimum for
   standalone use. The low-level encoder and CPI adapter accept a zero minimum.
 - Exact-input binding, v3 discriminator/length validation, full-fill Phoenix IOC,
-  finance revision, 20-second deadline and 100 bps IOC band remain in force.
-  Deadline and IOC execution limits are distinct from user-selected slippage.
+  finance revision and 100 bps IOC band remain in force.
+- Following the subsequent Titan agreement, both adapter builders encode
+  `i64::MAX` in the required deadline field. This removes the 20-second cutoff;
+  transaction expiry belongs to Titan/frontend/wallet and Solana. The program's
+  deadline check is unchanged. Zero is not a disable value: it is already expired.
 - No pricing, cached depth, native quote math or Ocelot vault program changes.
 
 The supplied template route has no user-selected final-output guard. Sending its
@@ -24,7 +27,7 @@ this adapter into its production guard before activation.
 
 `tests/ocelot_slippage.rs` verifies zero venue minimum in both directions across
 all four SOL3L/SOL2S captures, standalone zero rejection, positive-floor encoding,
-unchanged deadline/revision, Clock subscription and zero-input rejection.
+maximum deadline, unchanged revision, Clock subscription and zero-input rejection.
 
 The routed regression uses actual captured Ocelot/Phoenix/Ember executables and a
 rebuilt template router. A separate test-only SBF instruction checks the change
@@ -43,8 +46,18 @@ quote is synthetic and is not evidence of a particular market-move distribution.
   restored, including wallet balances, mints, issuer and venue state and newly
   created accounts. The payer's transaction fee is the sole allowed difference.
 - Successful controls demonstrate that Phoenix state actually changes.
-- The earlier standalone delay regression explicitly retains its 1% floor;
+- The earlier standalone delay regression explicitly encodes its original 1%
+  floor and 20-second deadline;
   historical results are not silently reinterpreted as zero-minimum protection.
+
+The deadline regression advances only the Unix timestamp by 21 seconds while
+holding the slot and account state fixed to isolate the removed cutoff. All eight
+fixture/direction cases execute directly and through the router (16 successes),
+with identical output. Re-encoding an expired deadline rejects all eight controls
+with `DeadlineExpired`. This does not claim that Phoenix liquidity survives a real
+21-second delay: the earlier expiry suite separately advances slots, and the local
+VM disables blockhash verification. Normal transaction expiry is not bypassed by
+this adapter change.
 
 Build and run commands are in [README](README.md#verify-without-rpc). The regression
 is explicitly ignored until both SBF artifacts are built; missing files fail it.
@@ -70,7 +83,9 @@ Also verify Clock-only subscriptions call `update_state` and expire prepared
 liquidity. Titan has confirmed that is the sole venue-update callback. Local
 tests do not establish delivery by its host.
 
-Still open: the 20-second deadline and recovery after slow wallet signing,
-production router/ABI and route acceptance, measured quote-error/performance
+Still open: production router/ABI and route acceptance, Clock-only host delivery,
+measured quote-error/performance
 acceptance, and separate ANT configuration/execution validation. User-selected
 slippage does not bound quote age or guarantee that Phoenix liquidity survives.
+Titan agreed to remove the additional deadline; this agreement does not promise
+automatic re-simulation or rebuilding after slow wallet signing.

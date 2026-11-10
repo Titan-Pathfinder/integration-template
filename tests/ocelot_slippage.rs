@@ -69,10 +69,7 @@ async fn router_minimum_is_zero_but_standalone_requires_a_positive_floor() {
             let routed = v.generate_swap_instruction(r.clone(), user).unwrap();
             let n = routed.data.len();
             assert_eq!(codec::u64_at(&routed.data, n - 24).unwrap(), 0);
-            assert_eq!(
-                codec::i64_at(&routed.data, n - 16).unwrap(),
-                v.state().unwrap().clock.unix_timestamp + 20
-            );
+            assert_eq!(codec::i64_at(&routed.data, n - 16).unwrap(), i64::MAX);
             assert_eq!(
                 codec::u64_at(&routed.data, n - 8).unwrap(),
                 v.state().unwrap().revision
@@ -93,6 +90,54 @@ async fn router_minimum_is_zero_but_standalone_requires_a_positive_floor() {
             assert!(v.generate_swap_instruction(empty, user).is_err());
         }
     }
+}
+
+#[cfg(feature = "reference-simulation")]
+#[tokio::test]
+#[ignore = "build router SBF binary first; see README"]
+async fn adapter_adds_no_deadline_but_program_still_enforces_explicit_expiry() {
+    use ocelot::simulation::USER;
+    let router = std::fs::read("program-template/target/deploy/titan_v3_venue_template.so")
+        .expect("build router first");
+    for (file, key) in FIXTURES {
+        let (mut v, cache) = fixture(file, key).await;
+        v.load_reference_oracle(&cache).await.unwrap();
+        // Isolate the Unix deadline from slot-based Phoenix liquidity/oracle
+        // expiry. Holding the slot fixed is a synthetic control, not a claim
+        // that liquidity survives a real 21-second signing delay. The existing
+        // clock/expiry regression separately exercises slot advancement.
+        let mut later = v.state().unwrap().clock.clone();
+        later.unix_timestamp += 21;
+        for mint in [true, false] {
+            let r = request(&v, mint);
+            let direct = v.generate_swap_instruction(r.clone(), USER).unwrap();
+            let bank = v.execution_oracle().unwrap().with_clock(&later);
+            let executed = bank
+                .execute(direct.clone(), r.input_mint, r.output_mint, r.amount)
+                .expect("no adapter deadline at +21 seconds");
+            assert!(executed.output > 0);
+            let (routed_bank, route) = support::routed(&v, &r, &router, None);
+            let routed = routed_bank
+                .with_clock(&later)
+                .execute(route, r.input_mint, r.output_mint, r.amount)
+                .expect("routed instruction also has no 20-second cutoff");
+            assert_eq!(routed.output, executed.output);
+            let mut expired = direct;
+            let n = expired.data.len();
+            expired.data[n - 16..n - 8]
+                .copy_from_slice(&(v.state().unwrap().clock.unix_timestamp + 20).to_le_bytes());
+            let error = bank
+                .execute(expired, r.input_mint, r.output_mint, r.amount)
+                .expect_err("explicit old deadline must still reject");
+            assert!(
+                format!("{error:?}").contains("DeadlineExpired"),
+                "{error:?}"
+            );
+        }
+    }
+    println!(
+        "deadline isolation: 16 direct/routed successes after +21 seconds; 8 explicit expired-deadline rejections"
+    );
 }
 
 #[cfg(feature = "reference-simulation")]

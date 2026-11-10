@@ -19,7 +19,7 @@ and [source/export provenance](SOURCE.json).
 
 ## Measured evidence
 
-- 48 selected host tests, 27 default-feature tests, 3 program/parity tests and both
+- 49 selected host tests, 27 default-feature tests, 3 program/parity tests and both
   Clippy configurations pass in this exported checkout. Details and commands are recorded in
   [EXPORT_VALIDATION.md](EXPORT_VALIDATION.md).
 - 205 accepted captured-state quotes execute without overquoting. All 39 baseline
@@ -47,8 +47,10 @@ configuration and execution validation before activation.
 
 Per Kevin's November 10 guidance, the generic builder now encodes zero Ocelot
 minimum and the CPI adapter accepts it. `build_with_minimum` remains the positive
-minimum helper for standalone use. Quote math is unchanged. The 20-second deadline,
-100 bps IOC band, finance revision and exact-input restrictions remain in force.
+minimum helper for standalone use. Quote math is unchanged. Titan subsequently
+agreed to removing the 20-second adapter cutoff; the required deadline is now
+`i64::MAX`. The 100 bps IOC band, finance revision and exact-input restrictions
+remain in force. Normal transaction expiry belongs to Titan/frontend/wallet and Solana.
 
 The sample router has no final user minimum. A separate **test-only** SBF guard
 models that check in the same local transaction: 72 successes and 48 complete
@@ -63,6 +65,11 @@ Confirm the complete rollback and correct final minimum after fees/rounding. Als
 test a tolerance above 1% so Ocelot's removed fixed floor cannot override the user.
 See [SLIPPAGE_VALIDATION.md](SLIPPAGE_VALIDATION.md) for the exact acceptance cases.
 
+A timestamp-isolation regression adds 16 direct/routed successes after 21 seconds
+and eight explicit expired-deadline rejections. The slot is held fixed to isolate
+the removed cutoff; this does not promise liquidity survival or blockhash validity
+after a real signing delay. The program deadline check itself is unchanged.
+
 ## Confirmed host contract and remaining decisions
 
 - Titan confirms a coherent single-slot account view and `update_state` as the
@@ -70,8 +77,9 @@ See [SLIPPAGE_VALIDATION.md](SLIPPAGE_VALIDATION.md) for the exact acceptance ca
   delivery removes expired liquidity on your host.
 - Titan confirms frontend/API user slippage is enforced in its production router.
   The adapter is now aligned; the production execution cases above remain open.
-- Wallet signing delay remains unbounded, and automatic re-simulation/rebuilding
-  was not promised. Agree the 20-second deadline and expired-transaction recovery.
+- Titan agreed to removing the adapter deadline; this policy is implemented.
+  Wallet signing delay remains unbounded, and automatic re-simulation/rebuilding
+  was not promised. The max-timestamp field adds no practical expiry cutoff.
 - Accept quote/output-error and refresh budgets against your corpus, including
   the recorded 4.144072 bp worst captured underquote. Local samples are not bounds.
 - Review quiet-market availability: weighted books older than their cached
