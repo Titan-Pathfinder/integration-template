@@ -83,6 +83,8 @@ pub struct Exchange {
     pub buffers: Vec<Pubkey>,
     pub withdraw_queue: Pubkey,
 }
+/// Low-level encoding: a zero minimum requires an enclosing transaction's output
+/// check. Standalone callers should use `OcelotVenue::build_with_minimum`.
 pub fn build(
     v: &OcelotVenue,
     amount: u64,
@@ -97,8 +99,8 @@ pub fn build(
     let c = &s.config;
     let ex = &s.exchange;
     let market = v.pool_id;
-    if amount == 0 || min_output == 0 {
-        return Err(invalid("zero input or output bound"));
+    if amount == 0 {
+        return Err(invalid("zero input"));
     }
     let usdc_vault = pda(b"phoenix_usdc_vault", market);
     let collateral_vault = pda(b"phoenix_collateral_vault", market);

@@ -1,5 +1,6 @@
 [workspace]
-members = ["programs/*"]
+members = ["programs/*", "test-programs/output-guard"]
+default-members = ["programs/titan-v3-venue-template"]
 resolver = "2"
 
 [profile.release]

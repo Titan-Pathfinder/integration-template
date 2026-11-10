@@ -5,10 +5,16 @@ for supported cached states.** `TradingVenue::quote()` performs issuer arithmeti
 spline pricing and risk/withdrawal checks without simulation, network access or heap
 allocation. See [implementation, supported scope and measurements](NATIVE_QUOTING.md).
 The teammate's final review of `a8c5f9fd` closed the last blocker and found no new
-blockers for same-state quote correctness and execution safety. The candidate is
-submitted here for Titan engineering review.
+blockers for same-state quote correctness and execution safety. That reviewed base was
+submitted for Titan engineering review in [upstream PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10)
+at `ac06e77`, with [standalone export verification](https://github.com/Ocelot-fi/integration-template/blob/ac06e77b57b7c0c8634d27151d013ce74f5bedd3/EXPORT_VALIDATION.md).
 Titan's error/timing and routing/runtime acceptance remain outstanding. Live
 routing is not activated.
+
+**Slippage follow-up:** the candidate now uses Titan's confirmed route-level
+user minimum instead of a fixed 1% Ocelot floor. This adapter change follows the
+earlier internal sign-off and requires Titan's production-router verification.
+See [implementation and 120-transaction rollback evidence](SLIPPAGE_VALIDATION.md).
 
 The complete provider passed 205 captured-state execution comparisons without an
 overquote or false acceptance; worst observed underquote is now 4.144072 bp after
@@ -55,10 +61,15 @@ constitute integration acceptance. See [evidence and Titan questions](HANDOFF.md
   Fixtures contain public chain state. Synthetic user balances and a local ALT
   make replay possible without a wallet, RPC submission, or mainnet funds.
 
-`build_with_minimum()` accepts an explicit output bound. The template's generic
-`generate_swap_instruction()` uses a 1% output tolerance, a 20-second deadline,
-and a 100 bps IOC price band. These are reference policy defaults to agree with
-Titan, not an approved production slippage policy. The caller must preserve the
+`build_with_minimum()` requires an explicit positive output bound for standalone
+execution. Following Titan's November 10 guidance, `generate_swap_instruction()`
+encodes zero venue minimum and **must only be used inside a route that enforces
+the user's final minimum**. Titan confirms its production router owns that check;
+the supplied template router does not implement it. The adapter still validates
+quote eligibility, exact input, the 20-second deadline, finance revision and the
+100 bps IOC price band. The deadline and IOC band are separate from user slippage
+and remain reference defaults pending agreement. See [slippage tests and production
+acceptance request](SLIPPAGE_VALIDATION.md). The caller must preserve the
 quoted input. Variable intermediate amounts and independently quoted repeated
 visits to the same Ocelot market are not supported.
 
@@ -76,6 +87,7 @@ were used. Run these commands from this directory:
 cargo +1.96.0 test --locked --lib --test ocelot --test ocelot_native --test your_venue_creation
 cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay --test ocelot_state
 cargo +1.96.0 test --locked --features reference-simulation --test ocelot_spline --test ocelot_phoenix
+cargo +1.96.0 test --locked --test ocelot_slippage
 cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml --lib --test venue_parity
 ```
 
@@ -91,6 +103,18 @@ The final command tests all four bundled snapshots, larger sizes and full exits 
 missing. Optional `OCELOT_SNAPSHOT` (directory or `.bin.gz`) and `OCELOT_MARKET`
 override the fixture location; routed native comparisons use the bundled provider
 and require a supported state. Use `probe` for fresh reference quotes. No deployment command is needed.
+
+To verify atomic rollback with the local final-output guard model:
+
+```sh
+(cd program-template && cargo-build-sbf --tools-version v1.54 --arch v0 --manifest-path test-programs/output-guard/Cargo.toml)
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_slippage -- --include-ignored --nocapture
+```
+
+Build the router first as above. The guard is a separate **test-only** program,
+excluded from the default workspace members. Never deploy it or use it to protect
+real funds. This proves adapter behavior and Solana transaction rollback against
+captured executables, not Titan's production minimum calculation or wiring.
 
 The upstream RPC suites (`tests/your_venue.rs` and the program's
 `tests/your_venue_route.rs`) remain diagnostic acceptance gates. Their original monotone/concave assertions conflict with Phoenix lot steps, and

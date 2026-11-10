@@ -1,7 +1,9 @@
 # Ocelot integration handoff, 10 November 2026
 
 The bundled conservative native Phoenix provider is installed by default.
-Internal review closed the reported same-state quote/execution blockers. This
+Internal review closed the prior same-state quote/execution blockers at `a8c5f9fd`.
+The later router-slippage patch follows that sign-off and is locally verified;
+it still needs Titan's production-router acceptance. This
 submission is for Titan engineering review, not activation or an agreed error bound.
 See [implementation and evidence](NATIVE_QUOTING.md), [build/replay commands](README.md),
 and [source/export provenance](SOURCE.json).
@@ -17,7 +19,7 @@ and [source/export provenance](SOURCE.json).
 
 ## Measured evidence
 
-- 46 selected host tests, 26 default-feature tests, 3 program/parity tests and both
+- 48 selected host tests, 27 default-feature tests, 3 program/parity tests and both
   Clippy configurations pass in this exported checkout. Details and commands are recorded in
   [EXPORT_VALIDATION.md](EXPORT_VALIDATION.md).
 - 205 accepted captured-state quotes execute without overquoting. All 39 baseline
@@ -41,25 +43,42 @@ issuer children, unsupported maker positions and special-priced markets. ANT
 oracle policy/special pricing are outside validated scope and require separate
 configuration and execution validation before activation.
 
-## Decisions needed from Titan
+## Slippage update and concrete production check
 
-1. Can the final account batch be coherent, with clock-only changes triggering a
-   refresh? Discovery data is discarded, but the adapter cannot detect a torn
-   final batch or refresh without host callbacks.
-2. What quote lifetime and output-floor/deadline policy should be used? The
-   reference defaults are 1% and 20 seconds. Delayed original transactions can
-   settle below their quote or reject; the output floor is not an error target.
-3. What final-output error and quote/refresh timing budgets are acceptable?
-   Confirm the 4.144072 bp worst captured underquote and conservative availability
-   restrictions against Titan's live-state corpus; these samples are not bounds.
-4. Does declining a weighted book older than its cached threshold (200 slots in
-   these captures) matter during quiet markets? Phoenix may execute these states.
-5. Can initial routes preserve the exact quoted issuer input and avoid independently
-   quoted repeated visits to the same market? Variable intermediate amounts are
-   rejected. Confirm the slope convention for discontinuities at Phoenix lot steps.
-6. Confirm production venue enum/ABI, runtime, compute budget, ALTs, route graphs
-   and market allowlist. LiteSVM 0.16.0 replays Phoenix's current EM_SBPF artifact;
-   the template's 0.6.1 runtime cannot. Simulation is verification-only, feature-gated.
+Per Kevin's November 10 guidance, the generic builder now encodes zero Ocelot
+minimum and the CPI adapter accepts it. `build_with_minimum` remains the positive
+minimum helper for standalone use. Quote math is unchanged. The 20-second deadline,
+100 bps IOC band, finance revision and exact-input restrictions remain in force.
+
+The sample router has no final user minimum. A separate **test-only** SBF guard
+models that check in the same local transaction: 72 successes and 48 complete
+rollbacks after successful Ocelot/Phoenix execution. The test inspects all writable
+route accounts and permits only the payer fee to differ on failure. It does not
+test or replace Titan's production router. Never deploy the test guard.
+
+**Please run the updated adapter against your production router/private harness:**
+verify mint and redeem with 0.5% user slippage, including a below-minimum result
+after Ocelot succeeds, equality/success controls, and existing user output balances.
+Confirm the complete rollback and correct final minimum after fees/rounding. Also
+test a tolerance above 1% so Ocelot's removed fixed floor cannot override the user.
+See [SLIPPAGE_VALIDATION.md](SLIPPAGE_VALIDATION.md) for the exact acceptance cases.
+
+## Confirmed host contract and remaining decisions
+
+- Titan confirms a coherent single-slot account view and `update_state` as the
+  only venue-update path. Clock is already subscribed; verify actual Clock-only
+  delivery removes expired liquidity on your host.
+- Titan confirms frontend/API user slippage is enforced in its production router.
+  The adapter is now aligned; the production execution cases above remain open.
+- Wallet signing delay remains unbounded, and automatic re-simulation/rebuilding
+  was not promised. Agree the 20-second deadline and expired-transaction recovery.
+- Accept quote/output-error and refresh budgets against your corpus, including
+  the recorded 4.144072 bp worst captured underquote. Local samples are not bounds.
+- Review quiet-market availability: weighted books older than their cached
+  threshold decline even when Phoenix may execute under the pinned rules.
+- Confirm exact quoted issuer input, intermediate/repeated-market restrictions,
+  slope convention at lot steps, production venue enum/ABI, runtime, compute, ALTs
+  and market allowlist. ANT oracle policy/special pricing remains unsupported.
 
 Upstream shared quote/router assertions remain unchanged. RPC-dependent template
 acceptance suites have not passed and are not replaced by these selected offline
@@ -68,7 +87,7 @@ tests. No on-chain program upgrade, deployment or live routing is included.
 ## Artifact identity
 
 The independently built template router must match SHA-256
-`4b85a025957265b03b1df16ac96f26f231032985c0d020ffffbc0c5f3ac6eaaf`.
+`b8997ff5ef34d8fa27a1e71fdfa1b134a6938788de920fa0e1d19b1f7d8652ba`.
 Fixtures contain public captured accounts and executable programdata. Synthetic
 user balances and an ALT support offline execution without mainnet funds.
 Archive hashes and reproduction details are in tests/fixtures/README.md and

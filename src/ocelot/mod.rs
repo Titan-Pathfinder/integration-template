@@ -353,12 +353,17 @@ impl OcelotVenue {
         self.simulator = Some(Arc::new(oracle));
         Ok(())
     }
+    /// Build a standalone instruction with a caller-selected, positive output floor.
+    /// Titan's router-protected path uses `generate_swap_instruction` instead.
     pub fn build_with_minimum(
         &self,
         r: &QuoteRequest,
         user: Pubkey,
         min_output: u64,
     ) -> Result<Instruction> {
+        if min_output == 0 {
+            return Err(invalid("standalone output bound must be positive"));
+        }
         instruction::build(self, r.amount, self.direction(r)?, user, min_output)
     }
 }
@@ -504,11 +509,10 @@ impl TradingVenue for OcelotVenue {
     }
 
     fn generate_swap_instruction(&self, r: QuoteRequest, user: Pubkey) -> Result<Instruction> {
-        let quote = self.quote(r.clone())?;
-        let minimum = quote
-            .expected_output
-            .saturating_sub(quote.expected_output / 100)
-            .max(1);
-        self.build_with_minimum(&r, user, minimum)
+        // Titan enforces the user's minimum on the final route output. This
+        // instruction is ONLY for that protected route, never standalone use.
+        // Keep the quote eligibility check even though no per-leg floor is needed.
+        self.quote(r.clone())?;
+        instruction::build(self, r.amount, self.direction(&r)?, user, 0)
     }
 }

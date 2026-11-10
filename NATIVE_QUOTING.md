@@ -4,9 +4,39 @@
 `OcelotVenue::update_state()` prepares it from cached accounts; `quote()` runs
 native integer arithmetic without RPC, VM execution or heap allocation. Supported
 snapshots now initialize and construct transactions without an injected test matcher.
-This is a local review candidate, not Titan acceptance or live distribution. The
-November 10 candidate is supplied here for Titan engineering review.
-The dated checkpoints below record internal history before this standalone export.
+The reviewed candidate is exported to upstream PR #10 at `ac06e77` for Titan
+engineering review. This is not Titan acceptance or live distribution. Dated
+checkpoints below retain the internal history before the standalone export.
+
+## Route slippage alignment, later 10 November
+
+Following Titan's confirmed router-level slippage policy, the generic instruction
+builder now encodes zero venue minimum after checking quote eligibility. The CPI
+adapter permits it while preserving exact-input and v3-only restrictions. Standalone
+`build_with_minimum` still rejects zero and requires the caller's explicit floor.
+The 20-second deadline and 100 bps IOC band are unchanged; quote math is unchanged.
+
+The selected suites pass: 48 reference-enabled host tests, 27 default-feature
+tests and 3 program/parity tests, including all previous 51 routed executions.
+Both host Clippy configurations and the test-only guard Clippy check pass. The
+new regression fails on the prior source's fixed 1% floor. A separate local final
+output guard gives 72 successful transactions and 48 complete rollbacks after
+successful Ocelot/Phoenix execution across all four captures and both directions.
+All writable route accounts are restored on failure except the payer's fee.
+The standalone delay test explicitly retains its prior 1% bound.
+
+Router SBF SHA-256: `b8997ff5ef34d8fa27a1e71fdfa1b134a6938788de920fa0e1d19b1f7d8652ba`.
+Test-only guard: `9f5383d9036a493f3132dfdb4090ebd479f5237f7c5d198d6fd9215436bb090c`.
+These supersede the earlier router hash for this candidate. No deployed Ocelot
+program changes. This patch follows, and is not covered by, the earlier teammate
+sign-off at `a8c5f9fd`.
+
+The supplied template router lacks a final user minimum. The local guard is a
+test model, not Titan production code; zero-minimum instructions require the
+production route check. See [reproduction and the concrete Titan acceptance
+request](SLIPPAGE_VALIDATION.md). Deadline handling, Clock-only host delivery and
+production wiring remain to verify. This evidence does not activate routing or
+establish ANT support. Historical policy discussions below predate this change.
 
 ## Review direction
 
@@ -206,6 +236,31 @@ quote latency and refresh latency are separate budgets.
 The zero-weight follow-up changes preparation only; these timings were recorded
 before that follow-up, and the quote kernel remains unchanged.
 
+Titan's subsequent reply, relayed by the owner on November 10, confirms a
+single-slot view across venues for the entire call and refreshes on slot changes,
+although they do not reconstruct everything. The exact adapter callback path
+still needs alignment so time-dependent prepared depth is refreshed or invalidated.
+They allow slower refresh than quoting, subject to aggregate processing keeping
+pace with slots; no numeric refresh budget was agreed. Their suggestion to cache
+level-exhaustion breakpoints matches this provider's cumulative spline-depth cache
+and binary search. Quote simulation followed by user-dependent signing time gives
+no bounded landing horizon. Output-floor/deadline ownership and re-quote/re-simulation
+timing remain open; the reference 1% / 20-second defaults are unchanged.
+
+**Later November 10 clarification:** Titan confirms `update_state` is the only
+venue-update path, driven by subscribed account changes. This adapter already
+includes the Clock sysvar in its required pubkeys; verify Clock-only notification
+delivery in Titan's runtime. Titan also confirms that frontend/API-selected
+slippage is enforced by its production router and permits zero venue minimum.
+The submitted code still applies the reference 1% floor and rejects zero in both
+the instruction builder and Ocelot CPI adapter. Aligning those guards requires
+testing the route-level minimum and atomic rollback: the supplied template route
+does not itself implement a user-selected final minimum. Keep explicit minimums
+available for standalone use. Titan describes frontend signing-delay handling as
+wallet-dependent, with the minimum based on the original quote; no re-simulation
+or rebuild guarantee was given. The 20-second deadline remains a placeholder.
+These are recorded follow-ups, not code changes or production validation.
+
 ## Review hardening, 9 November
 
 - `tests/ocelot_state.rs` advances discovery to an actual executed mint's post-state,
@@ -337,6 +392,28 @@ The prior delayed-landing rerun reported 172 executions at/above the quote, 84
 below the quote but above the output floor, and 64 rejections; none settled below
 the floor. The output floor is an execution guard, not an acceptable quote-error
 target. ANT configuration and special-pricing validation remain separate scope.
+
+## Standalone submission, 10 November
+
+[Upstream PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10)
+is updated at `ac06e77b57b7c0c8634d27151d013ce74f5bedd3`, exported from source
+`50d307269e9ac2260af47ca3d92371293075db0b` (reviewed runtime `a8c5f9fd`). Rust,
+manifests, lockfiles and fixtures match byte-for-byte. Public documentation has
+local links and screened technical context; no private application history,
+business notes or credentials were exported. Shared upstream assertions remain
+unchanged.
+
+The standalone checkout repeated 46 selected host tests, 26 default-feature tests,
+3 program/parity tests, both Clippy configurations and 51 routed executions. Its
+independent SBF rebuild matches router SHA-256
+`4b85a025957265b03b1df16ac96f26f231032985c0d020ffffbc0c5f3ac6eaaf`.
+Fresh quote batch-mean p50/p99/max was 94.9/104.6/105.5 ns, and complete cached
+refresh was 1,271.0/1,706.0/1,765.5 µs. Individual-call p50/p99/p99.9 was
+125/167/250 ns, maximum 26,417 ns including scheduling/timer overhead. See the
+[export report](https://github.com/Ocelot-fi/integration-template/blob/ac06e77b57b7c0c8634d27151d013ce74f5bedd3/EXPORT_VALIDATION.md)
+for fan-out, commands and limits. RPC-dependent upstream acceptance was not run.
+PR title/description now cover the complete provider; both PRs remain open/draft.
+This handoff changes no activation policy and establishes no ANT support.
 
 Reproduce from this package:
 

@@ -26,15 +26,10 @@ pub fn swap(
             .try_into()
             .map_err(|_| TemplateError::InvalidSwapInput)?,
     );
-    let minimum = u64::from_le_bytes(
-        data[n - 24..n - 16]
-            .try_into()
-            .map_err(|_| TemplateError::InvalidSwapInput)?,
-    );
-    require!(
-        encoded == amount && minimum > 0,
-        TemplateError::InvalidSwapInput
-    );
+    require!(encoded == amount, TemplateError::InvalidSwapInput);
+    // Zero venue minimum is valid ONLY when the enclosing route enforces the
+    // user's final minimum. Titan confirmed its production router does this;
+    // the upstream template route alone does not provide that protection.
     // Ocelot verifies every account binding, full-fill IOC, deadline and finance revision.
     // Whitelisting only these discriminators prevents arbitrary admin/keeper CPIs.
     Ok(vec![Instruction {
@@ -48,7 +43,7 @@ pub fn swap(
 mod tests {
     use super::*;
     #[test]
-    fn accepts_only_guarded_v3_mint_and_redeem() {
+    fn accepts_v3_with_router_or_explicit_minimum_and_pins_input() {
         for (disc, len) in [(MINT, 148usize), (REDEEM, 112), (REDEEM, 55)] {
             let mut data = [0; 160];
             data[..8].copy_from_slice(&disc);
@@ -60,7 +55,10 @@ mod tests {
             assert!(swap(&data, len as u8, 100, 101, &[]).is_err());
             assert!(swap(&data, len as u8, 101, 101, &[]).is_err());
             data[len - 24..len - 16].fill(0);
-            assert!(swap(&data, len as u8, 100, 100, &[]).is_err());
+            assert_eq!(
+                swap(&data, len as u8, 100, 100, &[]).unwrap()[0].data,
+                data[..len]
+            );
             data[len - 24] = 1;
             data[0] ^= 1;
             assert!(swap(&data, len as u8, 100, 100, &[]).is_err());

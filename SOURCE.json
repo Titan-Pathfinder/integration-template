@@ -1,12 +1,14 @@
 {
-  "ocelot_source_commit": "50d307269e9ac2260af47ca3d92371293075db0b",
-  "reviewed_runtime_commit": "a8c5f9fd5a710eb944d6302479035596337f8802",
+  "ocelot_source_commit": "720be6d7889e36858415cf43556aa182c172f746",
+  "runtime_commit": "720be6d7889e36858415cf43556aa182c172f746",
+  "prior_reviewed_runtime_commit": "a8c5f9fd5a710eb944d6302479035596337f8802",
+  "review_scope": "The slippage patch follows the prior internal sign-off; local validation is recorded, Titan production-router acceptance remains open.",
   "upstream": {
     "repository": "https://github.com/Titan-Pathfinder/integration-template",
     "commit": "c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d",
     "purpose": "Titan venue integration; upstream common quote and route tests retained"
   },
   "exported_at": "2026-11-10",
-  "scope": "Standalone integration package, public-chain fixtures and screened technical handoff. No application source/history, business documents or credentials.",
-  "changes_during_export": "README/fixture links made local; internal PR references and export status normalized in technical docs; HANDOFF.md rewritten for current technical scope. Rust, manifests, lockfiles and fixtures byte-identical to source."
+  "scope": "Standalone integration package, public-chain fixtures, test-only output guard and screened technical handoff. No application source/history, business documents or credentials.",
+  "changes_during_export": "README/fixture links made local; internal PR references normalized; HANDOFF.md updated. Rust, manifests, lockfiles and fixtures byte-identical to source."
 }

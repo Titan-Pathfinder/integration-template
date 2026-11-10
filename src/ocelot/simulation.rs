@@ -201,25 +201,18 @@ impl ExecutionOracle {
             .map_err(|_| invalid("local program setup"))?;
         Ok(fork)
     }
-    pub fn execute(
+    /// Prepare an isolated bank and transaction for local send/rollback tests.
+    /// Signatures are synthetic; this method never submits to a network.
+    pub fn prepare_transaction(
         &self,
-        ix: Instruction,
+        instructions: &[Instruction],
         input: Pubkey,
-        output: Pubkey,
         amount: u64,
-    ) -> Result<ExecutionResult> {
-        self.execute_with_accounts(ix, input, output, amount)
-            .map(|(result, _)| result)
-    }
-    /// Return the executed account changes for sequential, same-bank regressions.
-    /// This is reference-only tooling; no transaction is submitted.
-    pub fn execute_with_accounts(
-        &self,
-        ix: Instruction,
-        input: Pubkey,
-        output: Pubkey,
-        amount: u64,
-    ) -> Result<(ExecutionResult, HashMap<Pubkey, Account>)> {
+    ) -> Result<(
+        LiteSVM,
+        modern_transaction::versioned::VersionedTransaction,
+        u64,
+    )> {
         let mut vm = self.vm.clone();
         vm.set_account(
             modern_key(instruction::ata(USER, input)),
@@ -227,9 +220,13 @@ impl ExecutionOracle {
         )
         .map_err(|_| invalid("simulation input setup"))?;
         let mut lookup = self.lookup.clone();
-        lookup
-            .addresses
-            .extend(ix.accounts.iter().map(|a| a.pubkey).filter(|k| *k != USER));
+        lookup.addresses.extend(
+            instructions
+                .iter()
+                .flat_map(|ix| ix.accounts.iter())
+                .map(|a| a.pubkey)
+                .filter(|k| *k != USER),
+        );
         lookup.addresses.sort();
         lookup.addresses.dedup();
         if lookup.addresses.len() > 256 {
@@ -252,8 +249,9 @@ impl ExecutionOracle {
         )
         .map_err(|_| invalid("lookup setup"))?;
         let hash = solana_hash::Hash::new_from_array(vm.latest_blockhash().to_bytes());
-        let message = v0::Message::try_compile(&USER, &[ix], std::slice::from_ref(&lookup), hash)
-            .map_err(|_| invalid("message compilation"))?;
+        let message =
+            v0::Message::try_compile(&USER, instructions, std::slice::from_ref(&lookup), hash)
+                .map_err(|_| invalid("message compilation"))?;
         let tx = VersionedTransaction {
             signatures: vec![solana_sdk::signature::Signature::default()],
             message: VersionedMessage::V0(message),
@@ -267,6 +265,28 @@ impl ExecutionOracle {
         let tx: modern_transaction::versioned::VersionedTransaction =
             wincode::deserialize(&wire)
                 .map_err(|_| invalid("decode transaction for modern runtime"))?;
+        Ok((vm, tx, packet_bytes))
+    }
+    pub fn execute(
+        &self,
+        ix: Instruction,
+        input: Pubkey,
+        output: Pubkey,
+        amount: u64,
+    ) -> Result<ExecutionResult> {
+        self.execute_with_accounts(ix, input, output, amount)
+            .map(|(result, _)| result)
+    }
+    /// Return the executed account changes for sequential, same-bank regressions.
+    /// This is reference-only tooling; no transaction is submitted.
+    pub fn execute_with_accounts(
+        &self,
+        ix: Instruction,
+        input: Pubkey,
+        output: Pubkey,
+        amount: u64,
+    ) -> Result<(ExecutionResult, HashMap<Pubkey, Account>)> {
+        let (vm, tx, packet_bytes) = self.prepare_transaction(&[ix], input, amount)?;
         let result = vm.simulate_transaction(tx).map_err(|e| {
             TradingVenueError::AmmMethodError(
                 format!(

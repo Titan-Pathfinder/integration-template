@@ -934,7 +934,13 @@ async fn original_transactions_keep_output_and_deadline_guards_as_liquidity_expi
             for amount in [1_000_000, 10_000_000, 1_000_000_000] {
                 let r = request(&v, mint, amount);
                 if let Ok(q) = v.quote(r.clone()) {
-                    let ix = v.generate_swap_instruction(r.clone(), USER).unwrap();
+                    // Preserve the standalone 1% floor in this historical
+                    // delay regression. Titan routes now use an outer guard.
+                    let minimum = q
+                        .expected_output
+                        .saturating_sub(q.expected_output / 100)
+                        .max(1);
+                    let ix = v.build_with_minimum(&r, USER, minimum).unwrap();
                     let floor = ocelot::codec::u64_at(&ix.data, ix.data.len() - 24).unwrap();
                     originals.push((r, q.expected_output, floor, ix));
                 }
