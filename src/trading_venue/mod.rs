@@ -63,6 +63,10 @@ pub struct QuoteRequest {
     /// Swap mode. Titan only ever sets this to `ExactIn`; venues need not
     /// implement `ExactOut` and may return an error for it, but must not panic.
     pub swap_type: SwapType,
+
+    /// Toxicity score of the order flow behind this request, when Titan has
+    /// one; `None` when it is unknown. Venues may ignore it.
+    pub toxicity_score: Option<u8>,
 }
 
 /// A result returned from a venue’s `quote()` implementation.
@@ -299,6 +303,7 @@ pub trait TradingVenue {
             self.quote(QuoteRequest {
                 amount: x,
                 swap_type: SwapType::ExactIn,
+                toxicity_score: None,
                 input_mint,
                 output_mint,
             })
