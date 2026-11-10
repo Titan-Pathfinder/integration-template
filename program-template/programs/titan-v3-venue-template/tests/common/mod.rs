@@ -473,6 +473,7 @@ pub async fn run_swap_route<V: RouteVenue>(config: RouteConfig) {
                 output_mint,
                 amount,
                 swap_type: SwapType::ExactIn,
+                toxicity_score: None,
             };
             let quote = venue.quote(request.clone()).unwrap();
             let swap_ix = venue

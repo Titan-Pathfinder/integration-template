@@ -148,6 +148,7 @@ fn exact_in(input_mint: Pubkey, output_mint: Pubkey, amount: u64) -> QuoteReques
         output_mint,
         amount,
         swap_type: SwapType::ExactIn,
+        toxicity_score: None,
     }
 }
 

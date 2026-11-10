@@ -264,6 +264,7 @@ mod tests {
             output_mint: Pubkey::new_from_array([2u8; 32]),
             amount: 1_000,
             swap_type: SwapType::ExactIn,
+            toxicity_score: None,
         }
     }
 
