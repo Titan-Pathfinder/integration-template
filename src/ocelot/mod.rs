@@ -1,6 +1,7 @@
 //! Ocelot's native issuer venue. Reference execution uses captured program binaries, never a wallet.
 //! Native issuer math uses a prepared conservative spline provider; replay is opt-in test tooling.
 pub mod codec;
+pub mod curve;
 pub mod instruction;
 pub mod phoenix;
 pub mod quote;
@@ -497,7 +498,17 @@ impl TradingVenue for OcelotVenue {
                 "native Phoenix matching provider required; no simulation fallback".into(),
             ))?;
         let limits = self.limits.ok_or(invalid("missing quote limits"))?;
-        let output = quote::quote(state, limits, matcher, r.amount, mint)?;
+        // Whole-lot checks remain the execution gate, including all margin,
+        // capacity and withdrawal bounds. Smoothing changes only the estimate.
+        let raw = quote::quote(state, limits, matcher, r.amount, mint)?;
+        let output = matcher
+            .curve(mint)
+            .ok_or(invalid("native provider has no supported routing curve"))?
+            .quote(r.amount)?;
+        if output.amount > raw.amount {
+            // Never hide a broken bound by clipping to the discontinuous curve.
+            return Err(invalid("routing curve exceeds native output bound"));
+        }
         Ok(QuoteResult {
             input_mint: r.input_mint,
             output_mint: r.output_mint,
@@ -514,5 +525,35 @@ impl TradingVenue for OcelotVenue {
         // Keep the quote eligibility check even though no per-leg floor is needed.
         self.quote(r.clone())?;
         instruction::build(self, r.amount, self.direction(&r)?, user, 0)
+    }
+
+    fn bounds(&self, input: u8, output: u8) -> Result<(u64, u64)> {
+        let request = QuoteRequest {
+            input_mint: self.get_token(input as usize)?.pubkey,
+            output_mint: self.get_token(output as usize)?.pubkey,
+            amount: 0,
+            swap_type: SwapType::ExactIn,
+        };
+        let mint = self.direction(&request)?;
+        let state = self.state()?;
+        let limits = self.limits.ok_or(invalid("missing quote limits"))?;
+        let (floor, cap) = if mint {
+            self.matcher
+                .as_deref()
+                .and_then(|m| m.curve(true))
+                .ok_or(invalid("native provider has no supported mint curve"))?
+                .mint_finance_range(state, limits)?
+        } else {
+            (1, quote::routing_redemption_cap(state, limits)?)
+        };
+        bounds::find_boundaries(&|amount| {
+            if amount < floor || amount > cap {
+                return Err(invalid("outside continuous finance range"));
+            }
+            self.quote(QuoteRequest {
+                amount,
+                ..request.clone()
+            })
+        })
     }
 }

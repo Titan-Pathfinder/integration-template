@@ -7,6 +7,7 @@
 use super::{
     COLLATERAL, EMBER, PERP_MAP, PHOENIX, PHOENIX_GLOBAL, State, USDC,
     codec::{Position, Result, account, bytes, i64_at, invalid, key, u16_at, u64_at},
+    curve::Curve,
     discriminator,
     quote::{Fill, Order, PhoenixQuoteFactory, PhoenixQuoter},
     spline::{SideLimit, SplineDepth},
@@ -359,6 +360,7 @@ impl PhoenixQuoteFactory for NativePhoenixFactory {
 }
 
 pub struct NativePhoenix {
+    curves: [Option<Curve>; 2],
     depth: SplineDepth,
     position: Position,
     risk: RiskMarket,
@@ -583,7 +585,20 @@ impl NativePhoenix {
         let deposited = u64_at(child, 192)?;
         let cooldown_done =
             deposited <= s.clock.slot && s.clock.slot - deposited >= u64_at(g, 512)?;
+        // Shared account/risk/geometry failures above still invalidate the whole
+        // state. A curve representability failure disables only that direction.
+        let curve = |mint| match Curve::from_spline_depth(s, &depth, fee_micro, mint) {
+            Ok(curve) => curve,
+            Err(error) => {
+                log::debug!(
+                    "Ocelot curve unavailable: market={} mint={mint}: {error}",
+                    s.config.market
+                );
+                None
+            }
+        };
         Ok(Self {
+            curves: [curve(true), curve(false)],
             depth,
             position: s.position,
             risk,
@@ -599,6 +614,10 @@ impl NativePhoenix {
 }
 
 impl PhoenixQuoter for NativePhoenix {
+    fn curve(&self, mint: bool) -> Option<&Curve> {
+        self.curves[usize::from(!mint)].as_ref()
+    }
+
     fn quote(&self, o: &Order) -> Result<Fill> {
         if (o.reduce_only && !self.can_redeem) || (!o.reduce_only && !self.can_mint) {
             return Err(invalid(

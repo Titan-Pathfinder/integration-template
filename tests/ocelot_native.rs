@@ -7,7 +7,7 @@ use titan_integration_template::{
     account_caching::AccountsCache,
     ocelot::{
         OcelotVenue, USDC,
-        quote::{self, Fill, Order, PhoenixQuoter},
+        quote::{self, Fill, Order, PhoenixQuoteFactory, PhoenixQuoter},
     },
     trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue},
 };
@@ -60,20 +60,38 @@ async fn native_quotes_match_pinned_outputs_without_vm() {
         (true, 9_752_004, 10_196_606, 901_901, 845_852),
     ] {
         let (v, _) = fixture(short).await;
+        let s = v.state().unwrap();
+        let limits = quote::Limits::load(s).unwrap();
+        let matcher = support::FixtureFactory.prepare(s).unwrap();
+        let raw = |amount, mint| quote::quote(s, limits, matcher.as_ref(), amount, mint);
         for (mint, expected, boundary) in [
             (true, mint_expected, mint_boundary),
             (false, redeem_expected, redeem_boundary),
         ] {
             let r = request(&v, mint, 10_000_000);
+            assert_eq!(
+                assert_no_alloc::assert_no_alloc(|| raw(r.amount, mint))
+                    .unwrap()
+                    .amount,
+                expected
+            );
             let q = assert_no_alloc::assert_no_alloc(|| v.quote(r.clone())).unwrap();
-            assert_eq!(q.expected_output, expected);
+            assert!(q.expected_output <= expected);
             assert_eq!(q.amount, r.amount);
             assert!(!q.not_enough_liquidity);
-            let a = v.quote(request(&v, mint, boundary - 1)).unwrap();
-            let b = v.quote(request(&v, mint, boundary)).unwrap();
+            let a = raw(boundary - 1, mint).unwrap();
+            let b = raw(boundary, mint).unwrap();
             assert!(
-                a.expected_output > b.expected_output,
-                "must preserve real lot-boundary steps"
+                a.amount > b.amount,
+                "the raw execution kernel must preserve real lot-boundary steps"
+            );
+            assert!(
+                v.quote(request(&v, mint, boundary - 1))
+                    .unwrap()
+                    .expected_output
+                    <= v.quote(request(&v, mint, boundary))
+                        .unwrap()
+                        .expected_output
             );
             let zero = assert_no_alloc::assert_no_alloc(|| v.quote(request(&v, mint, 0))).unwrap();
             assert_eq!(zero.expected_output, 0);
@@ -293,6 +311,8 @@ async fn issuer_math_matches_deployed_execution_over_sizes_and_lot_edges() {
     for short in [false, true] {
         let (mut v, cache) = fixture(short).await;
         v.load_reference_oracle(&cache).await.unwrap();
+        let matcher = support::FixtureFactory.prepare(v.state().unwrap()).unwrap();
+        let limits = quote::Limits::load(v.state().unwrap()).unwrap();
         for mint in [true, false] {
             let mut sizes = vec![1_000_000, 10_000_000, 19_000_000];
             if mint || !short {
@@ -316,10 +336,13 @@ async fn issuer_math_matches_deployed_execution_over_sizes_and_lot_edges() {
             }
             for amount in sizes {
                 let r = request(&v, mint, amount);
-                match (v.quote(r.clone()), v.reference_quote(&r)) {
+                match (
+                    quote::quote(v.state().unwrap(), limits, matcher.as_ref(), amount, mint),
+                    v.reference_quote(&r),
+                ) {
                     (Ok(native), Ok(actual)) => {
                         assert_eq!(
-                            native.expected_output, actual.output,
+                            native.amount, actual.output,
                             "short={short} mint={mint} amount={amount}"
                         );
                         count += 1;
@@ -350,6 +373,9 @@ async fn benchmark_issuer_with_fixture_matcher() {
         "benchmark requires --release"
     );
     let (v, _) = fixture(false).await;
+    let state = v.state().unwrap();
+    let limits = quote::Limits::load(state).unwrap();
+    let matcher = support::FixtureFactory.prepare(state).unwrap();
     let mut samples = Vec::new();
     let mut checksum = 0u64;
     for batch in 0..100 {
@@ -360,10 +386,15 @@ async fn benchmark_issuer_with_fixture_matcher() {
                 i % 2 == 0,
                 1_000_000 + ((batch * 10_000 + i) % 18_000_000),
             );
-            checksum ^= std::hint::black_box(&v)
-                .quote(std::hint::black_box(r))
-                .unwrap()
-                .expected_output;
+            checksum ^= quote::quote(
+                std::hint::black_box(state),
+                limits,
+                matcher.as_ref(),
+                r.amount,
+                i % 2 == 0,
+            )
+            .unwrap()
+            .amount;
         }
         samples.push(start.elapsed().as_nanos() as f64 / 10_000.0);
     }

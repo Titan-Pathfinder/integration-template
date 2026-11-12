@@ -1,4 +1,4 @@
-# Native quoting implementation, updated 10 November 2026
+# Native quoting implementation, updated 12 November 2026
 
 **A conservative native Phoenix provider is implemented and installed by default.**
 `OcelotVenue::update_state()` prepares it from cached accounts; `quote()` runs
@@ -7,6 +7,37 @@ snapshots now initialize and construct transactions without an injected test mat
 The reviewed candidate is exported to upstream PR #10 at `ac06e77` for Titan
 engineering review. This is not Titan acceptance or live distribution. Dated
 checkpoints below retain the internal history before the standalone export.
+
+## Conservative curve update, 12 November
+
+Local follow-up to Titan's review: prepare a concave lower output envelope from
+the native cumulative depth, fees and lot-rounding bounds; return its segment
+slope as `price`. All existing execution checks still run. The raw issuer kernel
+remains available for parity and as a per-query upper bound on the estimate.
+Advertised partial-redemption ranges now reserve enough residual equity for
+whole-lot finance checks; individually valid full exits can still be quoted.
+
+The teammate's curve review found no output-bound or curve-shape defects, but
+identified mint finance gaps and coupled direction failures. The local follow-up
+intersects conservative linear finance constraints for mint bounds and lets a
+representability error disable just its own direction. 2,040,435 stressed range
+samples and 616 accepted execution comparisons pass; the original captured
+ranges and output/error figures are unchanged. Review-prose correction: the cited
+SOL2S hole uses 20,200 bps, not 22,000. Titan must honor our `bounds()` override.
+
+The four snapshots pass all 20 unchanged shared curve/construction assertions,
+273,390 lot-edge/interior comparisons and 9,666 synthetic accounting comparisons.
+An expanded 578 accepted-execution sweep has no overquotes or failed executions.
+The original 205-case sweep now has maximum underquote 11.804777 bp; the old
+4.144072 bp figure below describes the estimator before this change. The added
+percentage discount is largest on very small trades.
+
+[Full derivation, validation and commands](CURVE_VALIDATION.md). This update is
+submitted in PR #10 for engineering re-review. Locked/crossed books still reject; slide-price
+or midpoint support and future maker timestamps are deferred. No program change,
+live activation or ANT validation. This export follows `6e7c5f8`
+(deadline removal); older checkpoints below retain their original measurements.
+See [current export verification](EXPORT_VALIDATION.md).
 
 ## Adapter deadline removed, evening 10 November
 
@@ -199,11 +230,16 @@ liquidity-capacity fields prevent the lower output estimate from understating
 the amount the contract might actually withdraw. Estimated fees are explicitly not called actual fees.
 No partial input or partial Phoenix fill is accepted.
 
-`price` remains the local within-lot slope with integer rounding relaxed. Lot-boundary
-steps remain; it is not a globally concave curve or a derivative at a jump. Titan's
-original shared curve assertions remain unchanged and are not reported as passing.
+The raw issuer kernel's `price` is the local within-lot slope with integer rounding
+relaxed; its output still has lot-boundary steps. The venue now publishes the
+prepared lower curve and matching marginal rate described in
+[curve validation](CURVE_VALIDATION.md). Custom providers must supply a supported
+curve to publish venue quotes. The original shared assertions remain unchanged.
 
 ## Complete-provider evidence
+
+This section retains the pre-curve evidence. Current curve measurements and
+additional shared/execution coverage are in [CURVE_VALIDATION.md](CURVE_VALIDATION.md).
 
 `tests/ocelot_phoenix.rs` exercises the default provider through `OcelotVenue::quote`.
 Across four captured SOL3L/SOL2S states, **205 accepted quotes executed successfully

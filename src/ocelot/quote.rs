@@ -22,6 +22,13 @@ pub trait PhoenixQuoter: Send + Sync {
     /// bound final issuer output, not merely individual book prices.
     /// Reject partial fills and unavailable Phoenix/Ember deposits/withdrawals.
     fn quote(&self, order: &Order) -> Result<Fill>;
+
+    /// A prepared lower bound on this provider's issuer output, with a matching
+    /// marginal price. Providers without a curve remain usable by the raw issuer
+    /// kernel, but cannot publish discontinuous quotes through Titan's interface.
+    fn curve(&self, _mint: bool) -> Option<&super::curve::Curve> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -187,8 +194,8 @@ fn capacity(d: &[u8], enabled: usize, now: i64, global: bool) -> Result<u64> {
 #[derive(Debug, Clone, Copy)]
 pub struct Output {
     pub amount: u64,
-    /// Slope between Phoenix lot steps, with integer fee/share rounding relaxed.
-    /// It is not a claim that the discontinuous curve is globally concave.
+    /// Output atoms per input atom. The raw issuer kernel returns its within-lot
+    /// slope; Curve returns the active conservative segment's marginal rate.
     pub price: f64,
 }
 
@@ -250,11 +257,7 @@ pub fn order(s: &State, amount: u64, mint: bool) -> Result<Order> {
         return Err(invalid("below minimum Phoenix lot"));
     }
     let buy = if mint { m.long } else { s.position.base < 0 };
-    let limit_ticks = narrow(if buy {
-        s.mark.ticks as u128 * 10_100 / 10_000
-    } else {
-        (s.mark.ticks as u128 * 9_900).div_ceil(10_000)
-    })?;
+    let limit_ticks = limit_ticks(s, buy)?;
     Ok(Order {
         lots,
         buy,
@@ -262,6 +265,53 @@ pub fn order(s: &State, amount: u64, mint: bool) -> Result<Order> {
         limit_ticks,
         deposit,
     })
+}
+
+pub(crate) fn limit_ticks(s: &State, buy: bool) -> Result<u64> {
+    narrow(if buy {
+        s.mark.ticks as u128 * 10_100 / 10_000
+    } else {
+        (s.mark.ticks as u128 * 9_900).div_ceil(10_000)
+    })
+}
+
+/// A contiguous partial-redemption range must not hop over whole-lot finance
+/// failures near a full exit. For residual fraction t, remaining exposure is
+/// ceil(B*t) <= B*t+1 and venue equity is at least gross*t-cash. Reserve enough
+/// residual shares for BOTH finance inequalities, independently of fill costs.
+/// Exact full exits can still be quoted directly outside this routing interval.
+pub(crate) fn routing_redemption_cap(s: &State, limits: Limits) -> Result<u64> {
+    if s.position.base == 0 {
+        return Ok(s.actual_supply);
+    }
+    let fail = || invalid("redemption routing bound overflow or no finance headroom");
+    let shares = s.market.shares as u128;
+    let gross = s.gross as u128;
+    let leverage = limits.max_venue_leverage_bps as u128;
+    let lot_margin = s.mark.quote_per_lot.checked_mul(10_000).ok_or_else(fail)?;
+    let available = gross
+        .checked_mul(leverage)
+        .and_then(|v| {
+            lot_margin
+                .checked_mul(s.position.base.unsigned_abs() as u128)
+                .and_then(|used| v.checked_sub(used))
+        })
+        .filter(|&v| v > 0)
+        .ok_or_else(fail)?;
+    let margin_n = (limits.cash as u128)
+        .checked_mul(leverage)
+        .and_then(|v| v.checked_add(lot_margin))
+        .ok_or_else(fail)?;
+    let residual_margin = shares
+        .checked_mul(margin_n)
+        .ok_or_else(fail)?
+        .div_ceil(available);
+    let residual_equity = shares
+        .checked_mul(limits.cash as u128 + limits.min_venue_equity as u128)
+        .ok_or_else(fail)?
+        .div_ceil(gross);
+    let cap = shares.saturating_sub(residual_margin.max(residual_equity));
+    Ok(s.actual_supply.min(narrow(cap)?))
 }
 
 pub fn quote(

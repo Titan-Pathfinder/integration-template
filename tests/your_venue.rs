@@ -1,7 +1,8 @@
 //! Titan's unmodified shared acceptance assertions, wired to Ocelot.
-//! With no RPC these SKIP. The original curve assertions still conflict with
-//! Phoenix lot steps; the original VM cannot load current Phoenix binaries.
+//! With no RPC these SKIP. The curve assertions can also run through the local
+//! fixture RPC; the original VM cannot load current Phoenix binaries.
 //! Native conservative provider evidence lives in ocelot_phoenix/ocelot_replay.
+#![allow(clippy::result_large_err)] // Preserve the upstream shared error type/assertions.
 
 mod common;
 
@@ -17,7 +18,10 @@ use titan_integration_template::your_venue::YourVenue;
 static A: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
 
 fn pool() -> Pubkey {
-    Pubkey::from_str_const("AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM")
+    std::env::var("OCELOT_TEST_MARKET")
+        .unwrap_or_else(|_| "AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM".into())
+        .parse()
+        .expect("valid test market")
 }
 
 fn programs() -> Vec<Pubkey> {

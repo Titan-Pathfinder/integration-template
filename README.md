@@ -4,6 +4,20 @@
 for supported cached states.** `TradingVenue::quote()` performs issuer arithmetic,
 spline pricing and risk/withdrawal checks without simulation, network access or heap
 allocation. See [implementation, supported scope and measurements](NATIVE_QUOTING.md).
+
+**12 November curve update, submitted for engineering re-review:** the venue now returns an
+increasing, concave conservative estimate with a matching marginal `price`.
+All 20 shared curve/construction checks pass across four captured states; 578
+additional execution comparisons have no overquotes or failed accepted executions.
+The original 205-case sweep's maximum underquote is now 11.804777 bp, mainly a
+small-trade effect, superseding the pre-curve figure below. A conservative
+partial-redemption range avoids whole-lot finance gaps near full exits. The review
+follow-up also bounds mint ranges near finance limits and isolates curve failures
+by direction; 2,040,435 stressed range samples and 616 accepted executions pass.
+Captured ranges and quote outputs are unchanged by that follow-up. Locked
+and crossed books still fail closed. See [derivation, evidence and reproduction](CURVE_VALIDATION.md).
+
+The following records the earlier submission and review history.
 The teammate's final review of `a8c5f9fd` closed the last blocker and found no new
 blockers for same-state quote correctness and execution safety. That reviewed base was
 submitted for Titan engineering review in [upstream PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10)
@@ -18,8 +32,8 @@ See [implementation and 120-transaction rollback evidence](SLIPPAGE_VALIDATION.m
 Titan subsequently agreed to removing the adapter's 20-second cutoff. The
 required deadline field is now `i64::MAX`, adding no practical adapter expiry.
 
-The complete provider passed 205 captured-state execution comparisons without an
-overquote or false acceptance; worst observed underquote is now 4.144072 bp after
+Before the curve update, the complete provider passed 205 captured-state execution comparisons without an
+overquote or false acceptance; worst observed underquote was 4.144072 bp after
 restricting maker risk to the reviewed oracle-policy profile (200/205 are within 1 bp). The review
 hardening fixes mixed-read preparation, classifies all 39 fixture declines, and
 adds actual-transaction expiry, cash, full-exit capacity and binding-maker tests.
@@ -92,6 +106,7 @@ cargo +1.96.0 test --locked --lib --test ocelot --test ocelot_native --test your
 cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay --test ocelot_state
 cargo +1.96.0 test --locked --features reference-simulation --test ocelot_spline --test ocelot_phoenix
 cargo +1.96.0 test --locked --test ocelot_slippage
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_curve
 cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml --lib --test venue_parity
 ```
 
@@ -121,8 +136,10 @@ real funds. This proves adapter behavior and Solana transaction rollback against
 captured executables, not Titan's production minimum calculation or wiring.
 
 The upstream RPC suites (`tests/your_venue.rs` and the program's
-`tests/your_venue_route.rs`) remain diagnostic acceptance gates. Their original monotone/concave assertions conflict with Phoenix lot steps, and
-their LiteSVM 0.6.1 cannot load the captured Phoenix EM_SBPF executable. Offline replay uses LiteSVM 0.16.0 while
+`tests/your_venue_route.rs`) remain diagnostic acceptance gates. The unchanged
+quote-shape assertions now pass against four snapshots through a local fixture
+RPC; see [commands and limits](CURVE_VALIDATION.md#reproduce). Their LiteSVM 0.6.1
+cannot load the captured Phoenix EM_SBPF executable. Offline replay uses LiteSVM 0.16.0 while
 preserving Titan's Solana 2 public types. Do not interpret an RPC-less `cargo test`
 run, or the template's structural scorecard, as production acceptance.
 

@@ -213,6 +213,12 @@ impl SplineDepth {
         if buy { &self.asks } else { &self.bids }
     }
 
+    pub(crate) fn curve_levels(&self, buy: bool) -> impl Iterator<Item = (u64, u64, u128)> + '_ {
+        self.side(buy)
+            .iter()
+            .map(|l| (l.price, l.cumulative_lots, l.cumulative_tick_lots))
+    }
+
     /// Walk prepared spline geometry, excluding FIFO/hidden take liquidity.
     /// Returns estimated notional before fees, not a production fill guarantee.
     pub fn quote_notional(

@@ -1,4 +1,84 @@
-# Standalone export validation, 10 November 2026
+# Standalone curve export validation, 12 November 2026
+
+The checks below passed from the standalone checkout exported from source
+`b597dddf7c5ea8bd053e7cf8507dff8ee478e84e`. Runtime and test sources, Cargo manifests/locks and all four
+public-chain captures match that source byte-for-byte; documentation links and
+submission status are adapted for standalone use. No application history,
+business notes or credentials are included.
+
+## Current verification
+
+| Check | Result |
+| --- | --- |
+| Selected reference-feature suites | 62 passed; benchmarks/fresh-RPC diagnostics excluded |
+| Selected default-feature suites | 38 passed; 3 benchmarks/diagnostics ignored |
+| Program host and enum parity | 3 passed |
+| Unchanged shared assertions via fixture RPC | 20 passed across four captures; no live-RPC claim |
+| Curve lot-edge/interior comparisons | 273,390 accepted; no monotonicity, price or MVT violations |
+| Synthetic accounting comparisons | 9,666 accepted |
+| Stressed finance-range comparisons | 2,040,435 accepted; 24/80 stressed directions conservatively unavailable |
+| Expanded captured-execution sweep | 578 accepted, zero overquotes or failed executions; maximum 11.699366 bp underquote |
+| Stressed range execution | 616 accepted, zero overquotes or failed executions |
+| Original captured execution sweep | 205 accepted and 39 matching declines; maximum underquote now 11.804777 bp |
+| Existing routed parity executions | 51 pass |
+| Final user-minimum model | 72 successes, 48 complete rollbacks |
+| Deadline isolation | 16 successes at +21 seconds, 8 expired-deadline controls |
+| Clippy, default/reference selections | Both pass with warnings denied |
+| Formatting / whitespace / export source parity | Pass |
+| Shared quote/router assertion sources | Byte-identical to pinned upstream |
+| Router and test-guard artifacts | Match prior independently rebuilt artifacts; program sources unchanged |
+
+Core curve math received internal review. The later mint-range and per-direction
+failure-isolation fixes are included for Titan engineering re-review. The accepted
+execution sweeps are same-state evidence, not guarantees after wallet delay. The
+reviewer's additional mutated states reached 23.7 bp underquote; neither that nor
+12 bp is a universal bound. Locked/crossed books still fail closed.
+
+The 20 shared checks cover construction/allocation, zero-input spot price,
+monotone output, monotone price and MVT, served by the read-only fixture RPC.
+Shared bound/random execution simulations were filtered because the old VM
+cannot load current Phoenix executables; the shared speed test was filtered in
+favor of the complete native benchmark below. No skipped test is counted as a
+pass. The compatible execution reference and test-only final guard do not
+validate Titan's production router or private harness.
+
+Cargo dependency/build caches were reused, with the exported package recompiled
+from this checkout; the build log records its standalone source path. This is
+not a clean-machine dependency installation. No program source changed, so no
+new SBF rebuild was needed; the existing independently rebuilt router and guard
+were verified against source-workspace artifacts:
+
+- Router: `b8997ff5ef34d8fa27a1e71fdfa1b134a6938788de920fa0e1d19b1f7d8652ba`
+- Test-only guard: `9f5383d9036a493f3132dfdb4090ebd479f5237f7c5d198d6fd9215436bb090c`
+
+## Current standalone benchmark
+
+```text
+complete OcelotVenue::quote: 1,000,000 calls, batch-mean p50=115.7ns p99=120.8ns max=121.3ns (nearest-rank; refresh excluded)
+native preparation: 100 calls p50=331.3us p99=407.8us max=462.1us (nearest-rank; cached-state decoding, excludes cache fetch/copy)
+complete cached update_state: 100 calls p50=1276.2us p99=1531.3us max=1546.1us (nearest-rank; in-memory Snapshot cache, no network)
+cached refresh fan-out: 4 fixture instances, 100 cycles p50=5.016ms p99=5.438ms max=6.165ms (nearest-rank; sequential; excludes network)
+cached refresh fan-out: 26 fixture instances, 100 cycles p50=32.651ms p99=38.599ms max=54.117ms (nearest-rank; sequential; excludes network)
+individual complete quotes: 100,000 calls p50=125ns p99=167ns p99.9=250ns max=14583ns; timer-only p50=0ns p99=42ns (nearest-rank; includes timer overhead and scheduling)
+```
+
+These measurements use a release build, two alternating supported quote inputs
+and an in-memory account cache without network delivery. Batch means are not
+individual-call worst-case latency. Individual timings include timer overhead
+and scheduling. Fan-out repeats four fixture states rather than 26 distinct
+live markets. Range discovery and preparation are outside quote timing; no
+production latency guarantee is implied.
+
+## Reproduce and review
+
+Use [CURVE_VALIDATION.md](CURVE_VALIDATION.md#reproduce) for current suite and
+fixture-RPC commands, [README.md](README.md) for router/guard builds, and
+[HANDOFF.md](HANDOFF.md) for the re-review scope and acceptance questions. Run
+`shasum -a 256 -c SHA256SUMS` to verify the export manifest. The historical
+checkpoints below retain their original results and are superseded by this
+section for the current curve candidate.
+
+## Historical export validation, 10 November 2026
 
 The selected checks below passed from this standalone checkout. The Rust source,
 Cargo manifests/lockfiles and all four fixture archives match the source commit
@@ -9,7 +89,7 @@ Documentation links/status are normalized for the public export, and HANDOFF.md
 contains the screened technical handoff. No application source/history, business
 notes or credentials are exported.
 
-## Checks
+### Checks
 
 | Check | Result |
 | --- | --- |
@@ -60,7 +140,7 @@ live-capture tests were excluded from the selected correctness suite; the prior
 quote benchmark below is retained because this patch does not change quote math. No funds, signatures,
 deployment, live routing or acceptance-policy changes were involved.
 
-## Earlier November 10 export benchmark (unchanged quote implementation)
+### Earlier November 10 export benchmark (unchanged quote implementation)
 
 Recorded before the slippage patch on the local development host; not rerun for this instruction-only policy change:
 
@@ -80,7 +160,7 @@ four captured market instances rather than measuring 26 different live markets.
 These measurements are not production latency guarantees. Quote and refresh
 latency are separate budgets for Titan to confirm.
 
-## Reproduce
+### Reproduce
 
 Run from the standalone package root. Build the router before routed replay.
 

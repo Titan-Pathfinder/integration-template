@@ -137,6 +137,7 @@ pub fn routed(
 /// Its only purpose is to independently test the issuer math against execution.
 pub struct FixtureFactory;
 struct FixtureMatcher {
+    curves: [Option<titan_integration_template::ocelot::curve::Curve>; 2],
     position: titan_integration_template::ocelot::codec::Position,
     funding: i64,
     bid: u64,
@@ -158,7 +159,12 @@ impl titan_integration_template::ocelot::quote::PhoenixQuoteFactory for FixtureF
                 ));
             }
         };
+        use titan_integration_template::ocelot::quote::PhoenixQuoter;
+        let native = titan_integration_template::ocelot::phoenix::NativePhoenix::prepare(s)?;
         Ok(std::sync::Arc::new(FixtureMatcher {
+            // Kernel fills below remain the independent pinned exact model.
+            // Titan-facing quotes use the native provider's stricter curve.
+            curves: [native.curve(true).cloned(), native.curve(false).cloned()],
             position: s.position,
             funding: s.mark.funding,
             bid,
@@ -167,6 +173,10 @@ impl titan_integration_template::ocelot::quote::PhoenixQuoteFactory for FixtureF
     }
 }
 impl titan_integration_template::ocelot::quote::PhoenixQuoter for FixtureMatcher {
+    fn curve(&self, mint: bool) -> Option<&titan_integration_template::ocelot::curve::Curve> {
+        self.curves[usize::from(!mint)].as_ref()
+    }
+
     fn quote(
         &self,
         order: &titan_integration_template::ocelot::quote::Order,

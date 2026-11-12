@@ -1,102 +1,81 @@
-# Ocelot integration handoff, 10 November 2026
+# Ocelot integration handoff, 12 November 2026
 
-The bundled conservative native Phoenix provider is installed by default.
-Internal review closed the prior same-state quote/execution blockers at `a8c5f9fd`.
-The later router-slippage patch follows that sign-off and is locally verified;
-it still needs Titan's production-router acceptance. This
-submission is for Titan engineering review, not activation or an agreed error bound.
-See [implementation and evidence](NATIVE_QUOTING.md), [build/replay commands](README.md),
-and [source/export provenance](SOURCE.json).
+This update addresses the marginal-price and lot-edge curve findings from Titan's
+review. It includes the subsequent mint-range and direction-isolation fixes for
+engineering re-review. Locked/crossed-book rejection is unchanged and remains an
+open availability issue. This submission does not activate routing.
 
-## What is included
+## Implementation
 
-- Market discovery and coherent final-batch account decoding, including absent
-  dependency subscriptions and cold/warm zero-supply initialization.
-- Native allocation-free issuer/spline quotes with maker/taker risk, fee overrides,
-  conservative FIFO-uncross reserves, oracle eligibility and withdrawal bounds.
-- Exact-input Ocelot v3 mint/redeem instructions and the Titan template CPI adapter.
-- Four captured SOL3L/SOL2S states, executable reference replay and regression tests.
+- Account refresh prepares capacity-limited cumulative Phoenix spline depth,
+  maker/taker risk, effective fees and withdrawal limits from a coherent account
+  batch, with Clock and absent dependencies subscribed.
+- Refresh also prepares a conservative concave output envelope for mint and
+  redeem. Quote returns its output and matching marginal rate, while retaining
+  the original whole-lot execution checks and rejecting an estimate above the
+  native output bound. No RPC, VM execution or allocation occurs in quote.
+- The venue's `bounds()` override restricts mint and partial-redemption ranges
+  to avoid finance failures between otherwise valid lot sizes. Individually
+  valid amounts outside those ranges can still quote directly. Titan must honor
+  the override instead of independently binary-searching the raw quote domain.
+- A curve representability error disables only its own direction. Shared account,
+  oracle, risk and locked/crossed geometry failures still invalidate the refresh.
+- The exact-input v3 instruction/CPI contract is unchanged by this curve update:
+  generic routed instructions carry zero venue minimum, standalone instructions
+  require a positive minimum, and the required deadline is `i64::MAX` as agreed.
 
-## Measured evidence
+See [curve derivation and regressions](CURVE_VALIDATION.md),
+[provider restrictions](NATIVE_QUOTING.md), [build instructions](README.md),
+[standalone verification](EXPORT_VALIDATION.md) and [source provenance](SOURCE.json).
 
-- 49 selected host tests, 27 default-feature tests, 3 program/parity tests and both
-  Clippy configurations pass in this exported checkout. Details and commands are recorded in
-  [EXPORT_VALIDATION.md](EXPORT_VALIDATION.md).
-- 205 accepted captured-state quotes execute without overquoting. All 39 baseline
-  declines are also rejected by reference execution. 200/205 comparisons are
-  within 1 bp; the maximum underquote is 4.144072 bp, on one full SOL3L exit.
-- 51 routed executions cover four captures, both directions, larger trades/full
-  exits and three reserved-balance modes. Direct/routed output must match exactly.
-- Zero-weight spot/perp validity regression: 80 accepted executions, 48 matching
-  execution rejections and 16 intentional conservative declines. A zero-weight
-  book does not require freshness under the pinned policy.
-- Recorded complete-quote batch-mean p50/p99/max: 96.6/479.1/543.6 ns. Individual
-  call p50/p99/p99.9: 125/167/250 ns, maximum 39,000 ns including timer and OS
-  scheduling. Complete cached refresh p50/p99/max: 1,270.7/1,486.3/1,511.3 us.
-  These are local measurements, not production guarantees; fresh exported-checkout
-  timings and limitations are recorded with its validation.
+## Evidence and scope
 
-The public SDK layout pin is Rise v0.9.3 commit
-`2ce47221ef04a8d5879d39d31e82f9e92021753e`. Unknown oracle policy and Ember
-configuration fail closed. Conservative refusals include crossed splines, hot
-issuer children, unsupported maker positions and special-priced markets. ANT
-oracle policy/special pricing are outside validated scope and require separate
-configuration and execution validation before activation.
+The source-workspace verification includes 62 reference-feature tests, 38 default
+tests and 20 unchanged shared quote/construction checks through a read-only local
+fixture RPC. It includes 273,390 lot-edge/interior comparisons, 9,666 synthetic
+accounting comparisons, 2,040,435 stressed range comparisons and accepted execution
+sweeps of 578 and 616 cases without overquotes or failed accepted executions.
+Standalone repeat results are recorded in EXPORT_VALIDATION.md.
 
-## Slippage update and concrete production check
+The original 205 accepted execution comparisons and 39 matching declines remain.
+The maximum underquote is now 11.804777 bp in those captured states, predominantly
+a tiny-trade effect; the additional reviewer stress cases reached 23.7 bp. Neither
+number is a universal error ceiling. Quote/error acceptance remains Titan's decision.
 
-Per Kevin's November 10 guidance, the generic builder now encodes zero Ocelot
-minimum and the CPI adapter accepts it. `build_with_minimum` remains the positive
-minimum helper for standalone use. Quote math is unchanged. Titan subsequently
-agreed to removing the 20-second adapter cutoff; the required deadline is now
-`i64::MAX`. The 100 bps IOC band, finance revision and exact-input restrictions
-remain in force. Normal transaction expiry belongs to Titan/frontend/wallet and Solana.
+Shared assertion source is unchanged. The 20 shared checks cover construction,
+zero input, monotone output, monotone price and mean-value theorem across four SOL
+snapshots. Shared VM simulations and live-RPC acceptance are not claimed as passed;
+execution comparisons use the compatible captured-program reference runtime.
 
-The sample router has no final user minimum. A separate **test-only** SBF guard
-models that check in the same local transaction: 72 successes and 48 complete
-rollbacks after successful Ocelot/Phoenix execution. The test inspects all writable
-route accounts and permits only the payer fee to differ on failure. It does not
-test or replace Titan's production router. Never deploy the test guard.
+Core curve review found no output-bound or curve-shape defects. It identified
+the mint-range and coupled-direction issues addressed in this update; those
+follow-up fixes still need independent engineering review. The review example's
+limit is 20,200 bps, as used by its probe, rather than the 22,000-bps prose label.
 
-**Please run the updated adapter against your production router/private harness:**
-verify mint and redeem with 0.5% user slippage, including a below-minimum result
-after Ocelot succeeds, equality/success controls, and existing user output balances.
-Confirm the complete rollback and correct final minimum after fees/rounding. Also
-test a tolerance above 1% so Ocelot's removed fixed floor cannot override the user.
-See [SLIPPAGE_VALIDATION.md](SLIPPAGE_VALIDATION.md) for the exact acceptance cases.
+## Requested Titan re-review
 
-A timestamp-isolation regression adds 16 direct/routed successes after 21 seconds
-and eight explicit expired-deadline rejections. The slot is held fixed to isolate
-the removed cutoff; this does not promise liquidity survival or blockhash validity
-after a real signing delay. The program deadline check itself is unchanged.
+1. Review the conservative curve, its marginal price and both finance-range
+   bounds against your private harness, including lot edges and stressed states.
+2. Confirm production range discovery calls our `venue.bounds()` override.
+3. Confirm acceptable output error by ticket size and your quote/refresh budgets.
+4. Verify Clock-only delivery invokes our subscribed `update_state` so prepared
+   Phoenix liquidity expires even without another account change.
+5. Verify the final user minimum through the production router: both mint and
+   redeem with 0.5% slippage, below-minimum rollback after Ocelot succeeds, equality
+   controls, existing output balances and a tolerance above 1%.
 
-## Confirmed host contract and remaining decisions
+The template router does not contain Titan's final user guard. A separate local
+test-only guard verifies 72 successes and 48 atomic rollbacks; it must never be
+deployed or used as a substitute for the production guard. See
+[slippage acceptance cases](SLIPPAGE_VALIDATION.md). The timestamp-only regression
+retains 16 direct/routed successes at +21 seconds and 8 explicit expired-deadline
+rejections; holding slots fixed does not prove liquidity survives signing delay.
 
-- Titan confirms a coherent single-slot account view and `update_state` as the
-  only venue-update path. Clock is already subscribed; verify actual Clock-only
-  delivery removes expired liquidity on your host.
-- Titan confirms frontend/API user slippage is enforced in its production router.
-  The adapter is now aligned; the production execution cases above remain open.
-- Titan agreed to removing the adapter deadline; this policy is implemented.
-  Wallet signing delay remains unbounded, and automatic re-simulation/rebuilding
-  was not promised. The max-timestamp field adds no practical expiry cutoff.
-- Accept quote/output-error and refresh budgets against your corpus, including
-  the recorded 4.144072 bp worst captured underquote. Local samples are not bounds.
-- Review quiet-market availability: weighted books older than their cached
-  threshold decline even when Phoenix may execute under the pinned rules.
-- Confirm exact quoted issuer input, intermediate/repeated-market restrictions,
-  slope convention at lot steps, production venue enum/ABI, runtime, compute, ALTs
-  and market allowlist. ANT oracle policy/special pricing remains unsupported.
+## Still open
 
-Upstream shared quote/router assertions remain unchanged. RPC-dependent template
-acceptance suites have not passed and are not replaced by these selected offline
-tests. No on-chain program upgrade, deployment or live routing is included.
-
-## Artifact identity
-
-The independently built template router must match SHA-256
-`b8997ff5ef34d8fa27a1e71fdfa1b134a6938788de920fa0e1d19b1f7d8652ba`.
-Fixtures contain public captured accounts and executable programdata. Synthetic
-user balances and an ALT support offline execution without mainnet funds.
-Archive hashes and reproduction details are in tests/fixtures/README.md and
-NATIVE_QUOTING.md; SHA256SUMS covers the exported files.
+Locked/crossed spline handling, common-midpoint/slide-price support and future
+maker-update timestamps remain separate work. Unknown oracle/Ember configurations
+fail closed. ANT3L/ANT2S remain outside the validated profile. Quiet-market book
+staleness can reduce availability. Exact-input route restrictions, production
+ABI/runtime, user-minimum/Clock checks and error/timing acceptance remain activation
+requirements; none is implied by this review submission.
