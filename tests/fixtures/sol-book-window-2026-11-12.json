@@ -1,0 +1,24 @@
+{
+  "captures": [
+    1,
+    2,
+    1,
+    0
+  ],
+  "classes": [
+    "Normal",
+    "Locked",
+    "Crossed",
+    "OneSided"
+  ],
+  "distinct_consecutive_slots": 120,
+  "interval_ms": 1500,
+  "observations": [
+    101,
+    18,
+    1,
+    0
+  ],
+  "rpc_failures": 0,
+  "samples": 120
+}

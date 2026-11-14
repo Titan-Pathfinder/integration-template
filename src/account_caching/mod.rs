@@ -9,7 +9,7 @@ use solana_pubkey::Pubkey;
 /// Trait that abstracts account retrieval for Titan.
 ///
 /// A venue receives an `&dyn AccountsCache` during `update_state()` and uses it
-/// to retrieve all required on-chain accounts.  
+/// to retrieve all required on-chain accounts.
 ///
 /// Implementers must satisfy the following:
 ///

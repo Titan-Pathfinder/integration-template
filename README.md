@@ -1,139 +1,175 @@
-# Titan AMM Integration Template
+# Ocelot native issuer integration for Titan
 
-A reference implementation and test suite for adding AMMs, CLMMs, and proprietary liquidity engines to Titan’s routing layer.
+**14 November: native midpoint fallback with a five-bp output discount.**
+Normal books keep the existing conservative curve. Raw locked/crossed books
+prepare a common-midpoint approximation, rounding the midpoint up for buys and
+down for sells, then return `floor(curve_output * 9995 / 10000)` with the marginal
+price scaled by the same factor. The extra discount is not applied to normal
+books and is not an additional on-chain fee.
 
-## Overview
+Both preparation and quoting use Titan's supplied cached accounts. Quotes perform
+no network calls, VM execution or allocations. Hawkeye research is not part of
+the runtime. The default library still has no LiteSVM dependency.
 
-Titan aggregates liquidity from heterogeneous venues (AMMs, CLMMs, orderbooks, proprietary pools) under a single unified quoting and routing interface.
+**The midpoint policy is approximate, not a guaranteed execution-output bound.**
+Known constructed crossed states still overquote after the five-bp discount.
+Native checks remain active, but their midpoint-based price/capacity estimates
+are not a proof of exact Phoenix slide behavior. Titan's route-level user minimum
+protects execution; it can reject a transaction if actual output is insufficient.
+See [policy, counterexamples and current validation](MIDPOINT_VALIDATION.md).
 
-This repository provides:
+This update is for Titan engineering review in
+[PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10).
+It is not Titan acceptance or activation. No Ocelot program/ABI changes are
+included. ANT3L/ANT2S remain outside the validated oracle-policy profile.
 
-- A compact `TradingVenue` template for describing quote math, token metadata, account loading, and swap instruction shape
-- A robust boundary-search engine for computing safe swap-size ranges
-- Token metadata utilities, including Token-2022 support
-- A caching abstraction for efficient on-chain account loading
-- Simulation tests using LiteSVM ensuring off-chain quotes match on-chain execution
-- Pricing tests ensuring the reported marginal price is consistent with the quoted output
-- A fully worked Raydium example implementation
+## Earlier submission history
 
-This template is the starting point for integrating your AMM into Titan.
+The following records the earlier submission and review history.
+The teammate's final review of `a8c5f9fd` closed the last blocker and found no new
+blockers for same-state quote correctness and execution safety. That reviewed base was
+submitted for Titan engineering review in [upstream PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10)
+at `ac06e77`, with [standalone export verification](https://github.com/Ocelot-fi/integration-template/blob/ac06e77b57b7c0c8634d27151d013ce74f5bedd3/EXPORT_VALIDATION.md).
+Titan's error/timing and routing/runtime acceptance remain outstanding. Live
+routing is not activated.
 
-## On-Chain CPI Template
+**Slippage follow-up:** the candidate now uses Titan's confirmed route-level
+user minimum instead of a fixed 1% Ocelot floor. This adapter change follows the
+earlier internal sign-off and requires Titan's production-router verification.
+See [implementation and 120-transaction rollback evidence](SLIPPAGE_VALIDATION.md).
+Titan subsequently agreed to removing the adapter's 20-second cutoff. The
+required deadline field is now `i64::MAX`, adding no practical adapter expiry.
 
-This repo also includes `program-template/`, an Anchor template for the venue CPI
-adapter Titan's router program calls during routed swaps.
+Before the curve update, the complete provider passed 205 captured-state execution comparisons without an
+overquote or false acceptance; worst observed underquote was 4.144072 bp after
+restricting maker risk to the reviewed oracle-policy profile (200/205 are within 1 bp). The review
+hardening fixes mixed-read preparation, classifies all 39 fixture declines, and
+adds actual-transaction expiry, cash, full-exit capacity and binding-maker tests.
+The follow-up fixes divergent-oracle eligibility, pins price-validity policy,
+retains subscriptions for absent dependencies, and verifies cold/warm bootstrap
+after executed full exits. A further fix requires spot/perp validity even at zero
+pricing weight. See [latest review evidence](NATIVE_QUOTING.md#zero-weight-follow-up-10-november). This is
+sample evidence, not a universal error bound. Unsupported risk/price configurations
+fail closed; the current crossed-book policy is described above. Gally's SDK link is not an implementation dependency.
+The captured Anthropic oracle policy and special-price status are outside this
+provider's supported scope; ANT3L/ANT2S require separate validation before activation.
 
-Use it to verify your venue's on-chain swap instruction shape against Titan
-router account layout and TitanPDA custody:
+`reference_quote()` remains an opt-in correctness oracle, behind the
+`reference-simulation` feature and explicit `load_reference_oracle(cache)`.
+Default library builds do not depend on LiteSVM.
+Based on [Titan's template](https://github.com/Titan-Pathfinder/integration-template)
+at `c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d` (see `UPSTREAM.json`). The shared
+quote and router acceptance assertions are retained. Their skipped tests do not
+constitute integration acceptance. See [evidence and Titan questions](HANDOFF.md).
 
-```bash
-cargo check --manifest-path program-template/Cargo.toml
-make build-program
+## Implemented
+
+- Creation parser for Phoenix `init_market`, validated market/mint PDAs, checked
+  account decoders, finance revision, native mark, signed position and fee accrual.
+- Account discovery through `AccountsCache`, including nested Phoenix/Ember
+  accounts, withdrawal throttles, clock and cluster restart slot. Programdata is
+  loaded/subscribed only when the reference oracle is explicitly enabled.
+  Absent requested accounts remain watched; zero supply still discovers the
+  withdrawal queue and optional market throttle.
+  A failed refresh invalidates prior prepared quotes and the execution oracle.
+- `phoenix_mint_v3` and `phoenix_redeem_v3` with exact input, full-fill IOC,
+  reduce-only redemption, minimum output, deadline and finance revision guards.
+- Matching host/program `Venue::Ocelot` encoding and a CPI adapter that only
+  accepts those v3 instructions. A changed runtime input fails instead of
+  executing an order sized for a different quote.
+- Native issuer math, shared lot sizing, prepared quote limits, and an explicit
+  native Phoenix-provider interface and a bundled capacity-limited spline provider.
+  Allocation checks and complete issuer-versus-execution comparisons cover both directions.
+- Local replay of the actual captured Ocelot, Phoenix and Ember executables for
+  SOL3L and SOL2S; direct versus routed output parity and guard rejection tests.
+  Fixtures contain public chain state. Synthetic user balances and a local ALT
+  make replay possible without a wallet, RPC submission, or mainnet funds.
+
+`build_with_minimum()` requires an explicit positive output bound for standalone
+execution. Following Titan's November 10 guidance, `generate_swap_instruction()`
+encodes zero venue minimum and **must only be used inside a route that enforces
+the user's final minimum**. Titan confirms its production router owns that check;
+the supplied template router does not implement it. The adapter still validates
+quote eligibility, exact input, finance revision and the 100 bps IOC price band.
+Both adapter builders encode `i64::MAX` in the required v3 deadline field,
+leaving transaction expiry to Titan/frontend/wallet and Solana. The on-chain
+deadline comparison is unchanged; zero would mean expired, not disabled.
+The IOC band remains separate from user slippage. See [slippage tests and production
+acceptance request](SLIPPAGE_VALIDATION.md). The caller must preserve the
+quoted input. Variable intermediate amounts and independently quoted repeated
+visits to the same Ocelot market are not supported.
+
+Current coverage is classic SPL USDC/LT tokens, finance-enabled Phoenix markets,
+and one arena account per Phoenix index/buffer group. Expanded arena groups,
+unknown fee/finance layouts, unsupported token formats, ExactOut, stale marks,
+and malformed bindings fail closed. Market discovery is not a listing allowlist.
+
+## Verify without RPC
+
+Rust 1.96.0, Cargo lockfiles, and `cargo-build-sbf` 2.3.0 with platform tools v1.54
+were used. Run these commands from this directory:
+
+```sh
+cargo +1.96.0 test --locked --lib --test ocelot --test ocelot_native --test your_venue_creation
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_native --test ocelot_replay --test ocelot_state
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_spline --test ocelot_phoenix
+cargo +1.96.0 test --locked --test ocelot_slippage
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_curve
+cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml --lib --test venue_parity
 ```
 
-The program template includes a real Raydium AMM CPI example plus a minimal
-`venues/template.rs` file showing the common venue adapter shape.
+The first command exercises native issuer math without a VM. The second enables
+the exact-execution and lot-boundary regressions. The routed test is explicitly ignored until you build the router:
 
-## Core Components
-
-- `TradingVenue`: implement account parsing, state refresh, token metadata,
-  protocol labeling, exact-in quote math, and swap instruction construction.
-- `QuoteRequest` / `QuoteResult`: Titan routes `ExactIn` only. All amounts and
-  prices use raw atom units, not UI decimal scaling.
-- `QuoteResult::price`: report the marginal derivative
-  `d(output_atoms) / d(input_atoms)`. It must be positive, non-increasing, and
-  consistent with `expected_output`.
-- `bounds`: finds safe input ranges from a zero-input-safe `quote()`.
-- `TokenInfo`: covers SPL Token, Token-2022, and transfer fee metadata. Do not
-  duplicate transfer-fee handling in quote math.
-- `AccountsCache`: loads required on-chain accounts with RPC caching.
-
-## Included Tests
-
-Every venue must pass the same shared suite in `tests/common/mod.rs`, run through
-`tests/example.rs` for the Raydium reference and `tests/your_venue.rs` for your
-integration.
-
-- Construction and boundaries: deserialization, state loading, token info,
-  boundary quotes, and no heap allocation inside `quote()`.
-- Simulation: LiteSVM swaps compare on-chain output to off-chain `quote()` at
-  boundaries and random samples, while checking accounts, monotonicity, and
-  quote speed.
-- Pricing: `price` must be positive, non-increasing, and bracket the realized
-  average rate: `price(b) <= (f(b) - f(a)) / (b - a) <= price(a)`. The tests
-  include atom-rounding slack for truncated integer outputs.
-
-## Implementing Your Own Venue
-
-Fill in the skeleton at **`src/your_venue/mod.rs`**, then wire the matching tests,
-route builder, and program template files below. `program-template/...` means
-`program-template/programs/titan-v3-venue-template`.
-
-| Layer | File | Function / item | Update required |
-| --- | --- | --- | --- |
-| Creation parser | `src/your_venue/mod.rs` | `YOUR_PROGRAM_ID` | Replace with your venue's on-chain program id. |
-| Creation parser | `src/your_venue/mod.rs` | `parse_pool_creations()` | Detect real pool-creation instructions and return `PoolCreation { protocol, pool, mints }`. |
-| Creation parser | `tests/your_venue_creation.rs` | constants + `your_venue_pool_creation()` | Add a no-RPC fixture for one real pool-creation instruction. |
-| Quote layer | `src/trading_venue/protocol.rs` | `PoolProtocol::YourPoolProtocol` | Rename or replace with your real protocol variant and display string. |
-| Quote layer | `src/your_venue/mod.rs` | `YourVenue` fields | Add the pool state your quote math needs. |
-| Quote layer | `src/your_venue/mod.rs` | `FromAccount::from_account()` | Deserialize the pool account and record state accounts to refresh. |
-| Quote layer | `src/your_venue/mod.rs` | `protocol()` | Return your real `PoolProtocol` variant. |
-| Quote layer | `src/your_venue/mod.rs` | `update_state()` | Fetch accounts through `AccountsCache`, deserialize live state, populate `token_info`, and initialize the venue. |
-| Quote layer | `src/your_venue/mod.rs` | `quote()` | Implement exact-in quote math, including raw-atom marginal price. |
-| Quote layer | `src/your_venue/mod.rs` | `generate_swap_instruction()` | Build your venue's swap instruction with the same per-leg `AccountMeta` shape the route builder will pass through. |
-| Quote layer | `tests/your_venue.rs` | `pool()` + `programs()` | Point the shared off-chain suite at a real pool and required program binaries. |
-| Route builder | `src/swap_route/mod.rs` | `Venue` enum | Add your route-builder venue variant in the same position and shape as the program template enum. |
-| Route builder | `src/swap_route/mod.rs` | `protocol_to_venue()` | Map your `PoolProtocol` to your route-builder `Venue`; include any CPI parameters the program template must pass to your adapter. |
-| Program layer | `program-template/.../src/state.rs` | `Venue` enum | Add the matching program-template venue variant, including any CPI parameters your adapter needs. |
-| Program layer | `program-template/.../src/instructions/venues/template.rs` | `swap(<venue fields>, amount_in, account_metas)` | Replace this template with your venue CPI adapter: set program id, discriminator, and exact-in serialization. If renamed, remove the old placeholder so the scorecard no longer sees the default id. |
-| Program layer | `program-template/.../src/instructions/venues/mod.rs` | `pub mod <venue>;` | Register your venue CPI adapter. |
-| Program layer | `program-template/.../src/instructions/swap_route_v3.rs` | `perform_cpi_swap()` | Dispatch your `Venue` variant to your venue CPI adapter. |
-| Program layer | `program-template/.../tests/venue_parity.rs` | parity cases | Add cases proving the route-builder and program-template venue enums serialize identically. |
-| Program layer | `program-template/.../tests/your_venue_route.rs` | `pool()` + `venue_programs()` | Point the route simulation at a real pool and CPI program dependencies. |
-
-If your swap CPI touches additional runtime programs, include them in
-`program_dependencies()` and in the test program lists above.
-
-### Running the tests
-
-```bash
-make build-program   # build the Titan router program template
-make check-structure # fast no-RPC sanity checks
-make test-example   # the Raydium reference suite — always green
-make test-venue     # YOUR venue's suite (red until you implement YourVenue)
-make scorecard      # print the integration scorecard only
-make dump-programs  # fetch the program binaries the simulation tests load
+```sh
+(cd program-template && cargo-build-sbf --tools-version v1.54 --arch v0 --manifest-path programs/titan-v3-venue-template/Cargo.toml)
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_replay -- --ignored --nocapture
 ```
 
-The example and your venue run the *same* shared suite, so both are held to the
-same bar. Everything runs cleanly on a fresh clone: the construction, simulation,
-and pricing tests need a mainnet RPC endpoint (and, for the simulations, dumped
-program binaries), so they **SKIP with an explanation** instead of failing when
-those prerequisites are absent. To run them for real:
+The final command tests all four bundled snapshots, larger sizes and full exits and fails if the router binary is
+missing. Optional `OCELOT_SNAPSHOT` (directory or `.bin.gz`) and `OCELOT_MARKET`
+override the fixture location; routed native comparisons use the bundled provider
+and require a supported state. Use `probe` for fresh reference quotes. No deployment command is needed.
 
-```bash
-export SOLANA_RPC_URL=https://...   # a mainnet RPC endpoint
-make build-program                  # rebuild the Titan router program template
-make dump-programs                  # one-time: dump the venue programs into programs/
-make test-example
-make test-venue
+To verify atomic rollback with the local final-output guard model:
+
+```sh
+(cd program-template && cargo-build-sbf --tools-version v1.54 --arch v0 --manifest-path test-programs/output-guard/Cargo.toml)
+cargo +1.96.0 test --locked --features reference-simulation --test ocelot_slippage -- --include-ignored --nocapture
 ```
 
-`make check-structure` runs unit tests, scorecard assertions, and `Venue` enum
-parity checks without requiring RPC.
+Build the router first as above. The guard is a separate **test-only** program,
+excluded from the default workspace members. Never deploy it or use it to protect
+real funds. This proves adapter behavior and Solana transaction rollback against
+captured executables, not Titan's production minimum calculation or wiring.
 
-`make scorecard` prints both scorecard sections: the *Example* section is your
-always-green baseline (all four layers wired), and the *Your venue* section
-tracks which placeholders you've replaced across the creation parser, quote,
-program, and route-builder layers.
+The upstream RPC suites (`tests/your_venue.rs` and the program's
+`tests/your_venue_route.rs`) remain diagnostic acceptance gates. The unchanged
+quote-shape assertions now pass against four snapshots through a local fixture
+RPC; see [commands and limits](CURVE_VALIDATION.md#reproduce). Their LiteSVM 0.6.1
+cannot load the captured Phoenix EM_SBPF executable. Offline replay uses LiteSVM 0.16.0 while
+preserving Titan's Solana 2 public types. Do not interpret an RPC-less `cargo test`
+run, or the template's structural scorecard, as production acceptance.
 
-If your venue passes the suite, your quote() logic is sufficient to be assessed by
-our team and go through the next stages of integration.
+## Capture fresh public state
 
-## Tips for Integrators
-1. Always support zero-input quoting
-2. Keep your deserialization strictly defensive, never panic
-3. Don’t perform I/O, allocate heap memory, or panic inside quote()
-4. A quote must average under 1 microsecond (1µs) — see the quoting_speed test
-5. Make sure your instruction accounts match the program’s expectations
-6. Report a marginal `price` in raw output atoms per raw input atom — positive, non-increasing in size, and consistent with `expected_output`
+Use a fresh directory and your read-only RPC URL; the example makes no write RPCs:
+
+```sh
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com RUST_LOG=info \
+  cargo +1.96.0 run --locked --features reference-simulation --example probe -- /tmp/ocelot-titan-capture \
+  AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM --refresh
+```
+
+After discovery, `--refresh` captures discovered dependencies, including programdata,
+in one `getMultipleAccounts` response and prints each ELF hash. The bundled
+fixtures predate programdata subscription and captured executables separately,
+as recorded in the verification notes. The
+probe prints exact-size replays and adjacent lot boundaries, then writes
+`accounts.bin.gz` and capture metadata. Reusing a folder without `--refresh`
+replays its saved state. The archive is a gzip-compressed bincode
+`BTreeMap<String, Vec<u8>>`; each key is a public address and each value encodes
+`Option<solana_account::Account>`.
+
+No Ocelot vault program source, production listing, fees, caps, throttles, service,
+or live Titan deployment changes are part of this package.

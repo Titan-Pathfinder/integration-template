@@ -76,3 +76,7 @@ Desktop.ini
 
 # Local tooling
 .cache/
+
+# Pin both the host replay and isolated SBF workspace.
+!/Cargo.lock
+!/program-template/Cargo.lock

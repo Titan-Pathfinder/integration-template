@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/Titan-Pathfinder/integration-template",
+  "commit": "c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d",
+  "purpose": "Titan venue integration; upstream common quote and route tests retained"
+}

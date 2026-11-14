@@ -6,14 +6,14 @@
 //!
 //! The boundary search consists of two phases:
 //!
-//! 1. **Coarse exponential search** (`find_boundaries_coarse`)  
+//! 1. **Coarse exponential search** (`find_boundaries_coarse`)
 //!    Finds rough intervals where quoting transitions from:
 //!       - INVALID → VALID  (lower boundary)
 //!       - VALID   → INVALID (upper boundary)
 //!
 //!    using exponential stepping with overflow protection.
 //!
-//! 2. **Binary refinement** (`refine_lower`, `refine_upper`)  
+//! 2. **Binary refinement** (`refine_lower`, `refine_upper`)
 //!    Narrows those rough intervals into precise boundaries.
 //!
 //! A quote is considered *valid* when:
@@ -48,9 +48,9 @@ fn valid_quote(quote: &QuoteResult) -> bool {
 ///
 /// Where:
 ///
-/// - `(lower_low → lower_high)` brackets the **first valid quote**  
+/// - `(lower_low → lower_high)` brackets the **first valid quote**
 ///   i.e., lower_low is invalid, lower_high is valid.
-/// - `(upper_low → upper_high)` brackets the **first invalid quote after the valid range**  
+/// - `(upper_low → upper_high)` brackets the **first invalid quote after the valid range**
 ///   i.e., upper_low is valid, upper_high is invalid.
 ///
 /// The returned coarse bounds are later refined by binary search.
@@ -245,15 +245,15 @@ pub fn refine_upper(
 /// Unified boundary search.
 /// Returns `(lower_bound, upper_bound)` such that:
 ///
-/// - For all `x < lower_bound`, quoting is invalid  
-/// - For all `lower_bound ≤ x ≤ upper_bound`, quoting is valid  
+/// - For all `x < lower_bound`, quoting is invalid
+/// - For all `lower_bound ≤ x ≤ upper_bound`, quoting is valid
 /// - For all `x > upper_bound`, quoting is invalid
 ///
 /// The returned interval represents the **maximal valid input range** for the
 /// given pool and token pair.
 ///
 /// # Errors
-/// - `BoundarySearchFailed` if the search collapses to a degenerate interval  
+/// - `BoundarySearchFailed` if the search collapses to a degenerate interval
 /// - `NoQuotableValue` if no valid quote exists at any input (pool unusable)
 pub fn find_boundaries(
     f: &impl Fn(u64) -> Result<QuoteResult, TradingVenueError>,

@@ -98,7 +98,7 @@ _venue-phase:
 
 # --- public targets -----------------------------------------------------------
 build-program:
-	@cd program-template && anchor build
+	@cd program-template && cargo-build-sbf --tools-version v1.54 --arch v0 --manifest-path programs/titan-v3-venue-template/Cargo.toml
 
 check-structure: _unit-phase
 
@@ -125,3 +125,9 @@ dump-programs:
 			solana program dump -u $(DUMP_URL) $$p programs/$$p.so; \
 		fi; \
 	done
+
+# Ocelot's actual offline verification, including deployed program fixtures.
+.PHONY: test-ocelot
+test-ocelot: build-program
+	cargo +1.96.0 test --locked --features reference-simulation --lib --test ocelot --test ocelot_native --test ocelot_curve --test your_venue_creation --test ocelot_replay -- --skip benchmark_issuer_with_fixture_matcher --include-ignored
+	cargo +1.96.0 test --locked $(PROGRAM) --lib --test venue_parity
