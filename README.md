@@ -1,21 +1,29 @@
 # Ocelot native issuer integration for Titan
 
-**Status: conservative native Phoenix quoting implemented and installed by default
-for supported cached states.** `TradingVenue::quote()` performs issuer arithmetic,
-spline pricing and risk/withdrawal checks without simulation, network access or heap
-allocation. See [implementation, supported scope and measurements](NATIVE_QUOTING.md).
+**14 November: native midpoint fallback with a five-bp output discount.**
+Normal books keep the existing conservative curve. Raw locked/crossed books
+prepare a common-midpoint approximation, rounding the midpoint up for buys and
+down for sells, then return `floor(curve_output * 9995 / 10000)` with the marginal
+price scaled by the same factor. The extra discount is not applied to normal
+books and is not an additional on-chain fee.
 
-**12 November curve update, submitted for engineering re-review:** the venue now returns an
-increasing, concave conservative estimate with a matching marginal `price`.
-All 20 shared curve/construction checks pass across four captured states; 578
-additional execution comparisons have no overquotes or failed accepted executions.
-The original 205-case sweep's maximum underquote is now 11.804777 bp, mainly a
-small-trade effect, superseding the pre-curve figure below. A conservative
-partial-redemption range avoids whole-lot finance gaps near full exits. The review
-follow-up also bounds mint ranges near finance limits and isolates curve failures
-by direction; 2,040,435 stressed range samples and 616 accepted executions pass.
-Captured ranges and quote outputs are unchanged by that follow-up. Locked
-and crossed books still fail closed. See [derivation, evidence and reproduction](CURVE_VALIDATION.md).
+Both preparation and quoting use Titan's supplied cached accounts. Quotes perform
+no network calls, VM execution or allocations. Hawkeye research is not part of
+the runtime. The default library still has no LiteSVM dependency.
+
+**The midpoint policy is approximate, not a guaranteed execution-output bound.**
+Known constructed crossed states still overquote after the five-bp discount.
+Native checks remain active, but their midpoint-based price/capacity estimates
+are not a proof of exact Phoenix slide behavior. Titan's route-level user minimum
+protects execution; it can reject a transaction if actual output is insufficient.
+See [policy, counterexamples and current validation](MIDPOINT_VALIDATION.md).
+
+This update is for Titan engineering review in
+[PR #10](https://github.com/Titan-Pathfinder/integration-template/pull/10).
+It is not Titan acceptance or activation. No Ocelot program/ABI changes are
+included. ANT3L/ANT2S remain outside the validated oracle-policy profile.
+
+## Earlier submission history
 
 The following records the earlier submission and review history.
 The teammate's final review of `a8c5f9fd` closed the last blocker and found no new
@@ -42,7 +50,7 @@ retains subscriptions for absent dependencies, and verifies cold/warm bootstrap
 after executed full exits. A further fix requires spot/perp validity even at zero
 pricing weight. See [latest review evidence](NATIVE_QUOTING.md#zero-weight-follow-up-10-november). This is
 sample evidence, not a universal error bound. Unsupported risk/price configurations
-and crossed splines fail closed. Gally's SDK link is not an implementation dependency.
+fail closed; the current crossed-book policy is described above. Gally's SDK link is not an implementation dependency.
 The captured Anthropic oracle policy and special-price status are outside this
 provider's supported scope; ANT3L/ANT2S require separate validation before activation.
 

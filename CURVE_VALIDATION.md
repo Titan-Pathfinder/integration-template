@@ -1,8 +1,14 @@
 # Conservative routing curve, 12 November 2026
 
-Submitted follow-up to Titan's marginal-price and lot-edge findings, based on source
-`a99ece550cbb73b43ae067b9d01dd277e39859ff`. This change is submitted in
-upstream PR #10; see [source provenance](SOURCE.json). Locked/crossed books still fail preparation at `best_bid >= best_ask`;
+This is the historical normal-book curve derivation. The November 14
+[midpoint policy](MIDPOINT_VALIDATION.md) supersedes locked/crossed rejection
+and discounts that model's output by five bps; the model is not a proven bound
+on Phoenix slide-price execution. Normal-book behavior is unchanged.
+
+Local follow-up to Titan's marginal-price and lot-edge findings, based on source
+`a99ece550cbb73b43ae067b9d01dd277e39859ff`. This change is exported to
+upstream PR #10 at `035781b7` from source `b597dddf7c5ea8bd053e7cf8507dff8ee478e84e`;
+[standalone verification](https://github.com/Ocelot-fi/integration-template/blob/035781b77ea434f8c91629c3af4c99afca5ef64a/EXPORT_VALIDATION.md) records the repeated checks. Locked/crossed books still fail preparation at `best_bid >= best_ask`;
 midpoint approximation, slide prices and future maker-update slots are separate work.
 No program, CPI, instruction, slippage or deadline changes are included.
 
@@ -325,7 +331,7 @@ establish acceptance of a conservative estimate.
 
 ## Remaining scope
 
-Please review the mint-range and direction-isolation follow-up in this submission. Locked/crossed availability,
+Titan engineering re-review includes the mint-range and direction-isolation follow-up. Locked/crossed availability,
 future maker-update slots, live-state coverage and Titan's acceptable output
 error remain open. No common-midpoint approximation is present. Same-state
 underquoting does not guarantee execution after signing delay. Titan production

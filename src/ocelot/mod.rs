@@ -1,8 +1,12 @@
 //! Ocelot's native issuer venue. Reference execution uses captured program binaries, never a wallet.
-//! Native issuer math uses a prepared conservative spline provider; replay is opt-in test tooling.
+//! Normal books use the conservative spline provider; locked/crossed books use
+//! the explicit discounted midpoint policy. Replay remains opt-in test tooling.
 pub mod codec;
 pub mod curve;
+#[cfg(feature = "reference-simulation")]
+pub mod diagnostics;
 pub mod instruction;
+pub mod midpoint;
 pub mod phoenix;
 pub mod quote;
 #[cfg(feature = "reference-simulation")]
@@ -345,6 +349,12 @@ impl OcelotVenue {
         }
         Ok(())
     }
+    /// Diagnostic mode for this prepared snapshot; false when uninitialized.
+    pub fn uses_midpoint_approximation(&self) -> bool {
+        self.matcher
+            .as_ref()
+            .is_some_and(|m| m.is_midpoint_approximation())
+    }
     /// Explicitly opt into a local verification VM. `update_state` never loads it.
     #[cfg(feature = "reference-simulation")]
     pub async fn load_reference_oracle(&mut self, cache: &dyn AccountsCache) -> Result<()> {
@@ -509,13 +519,25 @@ impl TradingVenue for OcelotVenue {
             // Never hide a broken bound by clipping to the discontinuous curve.
             return Err(invalid("routing curve exceeds native output bound"));
         }
+        let (expected_output, price) = if matcher.is_midpoint_approximation() {
+            let remaining = 10_000 - midpoint::OUTPUT_DISCOUNT_BPS;
+            (
+                (output.amount as u128 * remaining as u128 / 10_000) as u64,
+                output.price * (remaining as f64 / 10_000.0),
+            )
+        } else {
+            (output.amount, output.price)
+        };
+        if r.amount != 0 && expected_output == 0 {
+            return Err(invalid("output rounds to zero after midpoint discount"));
+        }
         Ok(QuoteResult {
             input_mint: r.input_mint,
             output_mint: r.output_mint,
             amount: r.amount,
-            expected_output: output.amount,
+            expected_output,
             not_enough_liquidity: false,
-            price: output.price,
+            price,
         })
     }
 

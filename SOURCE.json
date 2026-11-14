@@ -1,15 +1,15 @@
 {
-  "ocelot_source_commit": "b597dddf7c5ea8bd053e7cf8507dff8ee478e84e",
-  "runtime_commit": "b597dddf7c5ea8bd053e7cf8507dff8ee478e84e",
+  "ocelot_source_commit": "25cdb9d81afa0e960bbfcd6b1471838836ab4ead",
+  "runtime_commit": "25cdb9d81afa0e960bbfcd6b1471838836ab4ead",
   "prior_reviewed_runtime_commit": "a8c5f9fd5a710eb944d6302479035596337f8802",
-  "review_scope": "Core conservative curve received internal review; subsequent mint-range and direction-isolation fixes have local regression/execution evidence and are included for Titan engineering re-review. Locked/crossed-book support is deferred; no activation approval.",
+  "review_scope": "Native default midpoint fallback with five-bp final-output discount only for locked/crossed books. Direction-aware tick rounding. Known wider-crossing overquotes retained and disclosed; explicit Titan engineering/error-policy acceptance required. Earlier conservative-provider sign-off does not cover this new approximation. No activation approval.",
   "upstream": {
     "repository": "https://github.com/Titan-Pathfinder/integration-template",
     "commit": "c0bb5c9b7f7fc7d00f80c24852ef36942fc8464d",
     "purpose": "Titan venue integration; upstream common quote and route tests retained"
   },
-  "exported_at": "2026-11-12",
+  "exported_at": "2026-11-14",
   "scope": "Standalone integration package, public-chain fixtures, test-only output guard and screened technical handoff. No application source/history, business documents or credentials.",
-  "changes_during_export": "README/fixture links and submission status normalized; internal PR references removed; technical HANDOFF/EXPORT_VALIDATION refreshed. Rust, test source, manifests, locks and fixtures are byte-identical to source.",
-  "previous_runtime_commit": "52e54dfc0b4ed883722fee62f5fa234586194a53"
+  "changes_during_export": "README/fixture documentation links normalized; internal PR references removed; HANDOFF and EXPORT_VALIDATION refreshed. Rust, test sources, manifests, locks, measurements and fixtures are byte-identical to the committed source.",
+  "previous_runtime_commit": "b597dddf7c5ea8bd053e7cf8507dff8ee478e84e"
 }

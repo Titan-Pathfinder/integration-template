@@ -1,12 +1,21 @@
-# Native quoting implementation, updated 12 November 2026
+# Native quoting implementation, updated 14 November 2026
 
-**A conservative native Phoenix provider is implemented and installed by default.**
-`OcelotVenue::update_state()` prepares it from cached accounts; `quote()` runs
-native integer arithmetic without RPC, VM execution or heap allocation. Supported
-snapshots now initialize and construct transactions without an injected test matcher.
-The reviewed candidate is exported to upstream PR #10 at `ac06e77` for Titan
-engineering review. This is not Titan acceptance or live distribution. Dated
-checkpoints below retain the internal history before the standalone export.
+`update_state()` prepares the bundled native provider from the supplied account
+snapshot. Normal books retain the conservative curve; locked/crossed books use
+an explicit common-midpoint approximation with an additional five-bp final-output
+discount. Half-tick midpoints round up for buys and down for sells. `quote()`
+remains allocation-free and performs no RPC or VM execution.
+
+**The fallback can overquote constructed crossed states even after the discount.**
+It is not covered by the earlier conservative-provider correctness sign-off.
+The retained raw-model check does not compare against Phoenix's true slide prices.
+Titan must review the stated error policy and route-level minimum behavior before
+activation. See [current implementation and evidence](MIDPOINT_VALIDATION.md).
+Unsupported configurations still decline; ANT is not enabled by this change.
+
+The dated sections below preserve historical review and export checkpoints.
+Their older locked/crossed rejection policy is superseded by the explicit policy
+above. No deployed Ocelot program or instruction encoding changes.
 
 ## Conservative curve update, 12 November
 
@@ -33,11 +42,11 @@ The original 205-case sweep now has maximum underquote 11.804777 bp; the old
 percentage discount is largest on very small trades.
 
 [Full derivation, validation and commands](CURVE_VALIDATION.md). This update is
-submitted in PR #10 for engineering re-review. Locked/crossed books still reject; slide-price
-or midpoint support and future maker timestamps are deferred. No program change,
-live activation or ANT validation. This export follows `6e7c5f8`
-(deadline removal); older checkpoints below retain their original measurements.
-See [current export verification](EXPORT_VALIDATION.md).
+exported to PR #10 at `035781b7` for Titan engineering re-review. At that checkpoint locked/crossed books rejected; the November 14
+midpoint policy supersedes that restriction. Future maker timestamp handling is unchanged. No program change,
+live activation or ANT validation. [Standalone export verification](https://github.com/Ocelot-fi/integration-template/blob/035781b77ea434f8c91629c3af4c99afca5ef64a/EXPORT_VALIDATION.md) repeats
+62 reference, 38 default, 20 shared fixture and 3 program tests plus both Clippy
+configurations; older checkpoints below retain their original measurements.
 
 ## Adapter deadline removed, evening 10 November
 

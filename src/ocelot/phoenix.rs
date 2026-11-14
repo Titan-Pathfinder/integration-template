@@ -355,7 +355,7 @@ fn token_balance(s: &State, address: Pubkey, mint: Pubkey, authority: Pubkey) ->
 pub struct NativePhoenixFactory;
 impl PhoenixQuoteFactory for NativePhoenixFactory {
     fn prepare(&self, s: &State) -> Result<Arc<dyn PhoenixQuoter>> {
-        Ok(Arc::new(NativePhoenix::prepare(s)?))
+        super::midpoint::prepare(s)
     }
 }
 

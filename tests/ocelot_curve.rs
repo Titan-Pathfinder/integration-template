@@ -293,7 +293,7 @@ fn synthetic_spline(book: solana_pubkey::Pubkey) -> solana_account::Account {
 }
 
 #[tokio::test]
-async fn locked_and_crossed_books_still_invalidate_quotes() {
+async fn midpoint_does_not_turn_unknown_makers_into_executable_liquidity() {
     use titan_integration_template::ocelot::PHOENIX;
     for second_mid in [10_002u64, 10_003] {
         let (mut v, mut cache) = fixture(0).await;
@@ -308,14 +308,13 @@ async fn locked_and_crossed_books_still_invalidate_quotes() {
             solana_pubkey::Pubkey::find_program_address(&[b"spline", book.as_ref()], &PHOENIX).0;
         cache.0.insert(key, Some(a));
         let r = request(&v, true, 5_000_000);
-        let error = v.update_state(&cache).await.unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("crossed splines require Phoenix slide-price support")
-        );
-        assert!(!v.initialized());
+        // Midpoint preparation can decode these crossed curves, but the fake
+        // maker has no margin-backed capacity. Never turn it into a quote.
+        v.update_state(&cache).await.unwrap();
+        assert!(v.uses_midpoint_approximation());
         assert!(v.quote(r).is_err());
+        assert!(v.bounds(0, 1).is_err());
+        assert!(v.bounds(1, 0).is_err());
     }
 }
 

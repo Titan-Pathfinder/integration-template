@@ -12,7 +12,7 @@ use titan_integration_template::{
     trading_venue::{FromAccount, QuoteRequest, SwapType, TradingVenue},
 };
 
-const FIXTURES: [(&str, &str); 4] = [
+const FIXTURES: [(&str, &str); 8] = [
     (
         "sol3l-465928618.bin.gz",
         "AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM",
@@ -27,6 +27,22 @@ const FIXTURES: [(&str, &str); 4] = [
     ),
     (
         "sol2s-467431351.bin.gz",
+        "CNEcZ2Cf6bqQTb8r9BSyZQb8o47Qa6Fd72Z1dj5BDGqp",
+    ),
+    (
+        "sol-locked-468615258.bin.gz",
+        "AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM",
+    ),
+    (
+        "sol-locked-468615258.bin.gz",
+        "CNEcZ2Cf6bqQTb8r9BSyZQb8o47Qa6Fd72Z1dj5BDGqp",
+    ),
+    (
+        "sol-crossed-468615690.bin.gz",
+        "AuvLduWd2g2kmD4kLTGH4c3jf7XqfA9qBUDb4Lmps7kM",
+    ),
+    (
+        "sol-crossed-468615690.bin.gz",
         "CNEcZ2Cf6bqQTb8r9BSyZQb8o47Qa6Fd72Z1dj5BDGqp",
     ),
 ];
@@ -136,7 +152,9 @@ async fn adapter_adds_no_deadline_but_program_still_enforces_explicit_expiry() {
         }
     }
     println!(
-        "deadline isolation: 16 direct/routed successes after +21 seconds; 8 explicit expired-deadline rejections"
+        "deadline isolation: {} direct/routed successes after +21 seconds; {} explicit expired-deadline rejections",
+        FIXTURES.len() * 4,
+        FIXTURES.len() * 2
     );
 }
 
@@ -284,7 +302,10 @@ async fn final_output_guard_reverts_completed_ocelot_and_phoenix_trades() {
             }
         }
     }
-    assert_eq!((successes, rollbacks), (72, 48));
+    assert_eq!(
+        (successes, rollbacks),
+        (FIXTURES.len() * 18, FIXTURES.len() * 12)
+    );
     println!(
         "route minimum model: {successes} successful transactions; {rollbacks} complete rollbacks after Ocelot/Phoenix success, all writable accounts restored except payer fee"
     );

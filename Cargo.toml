@@ -76,3 +76,7 @@ reference-simulation = ["dep:litesvm-modern", "dep:modern-account", "dep:modern-
 [[example]]
 name = "probe"
 required-features = ["reference-simulation"]
+
+[[example]]
+name = "capture_locked"
+required-features = ["reference-simulation"]

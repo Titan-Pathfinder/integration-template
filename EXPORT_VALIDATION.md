@@ -1,4 +1,93 @@
-# Standalone curve export validation, 12 November 2026
+# Standalone midpoint export validation, 14 November 2026
+
+Exported source: `25cdb9d81afa0e960bbfcd6b1471838836ab4ead`. The default adapter now uses direction-aware native
+midpoint preparation with a five-bp final-output discount only for locked/crossed
+books. Normal quotes and the on-chain contract are unchanged. This is an explicit
+approximation with known overquotes, not a universal execution-output bound.
+
+## Current standalone results
+
+| Check | Result |
+| --- | --- |
+| Reference-feature `release-debug` suite | 67 passed, allocation guards enabled |
+| Default-feature `release-debug` suite | 42 passed; 4 benchmarks explicitly ignored |
+| Unchanged shared assertions, eight fixture/market cases | 40 passed |
+| Program host/enum parity tests | 3 passed |
+| Reference/default Clippy with warnings denied | Both pass |
+| Formatting | Pass |
+| Rust/tests/manifests/locks/measurements/fixtures | Byte-identical to committed source |
+| Shared quote/router assertion files | Byte-identical to pinned Titan upstream |
+| Router/test-guard artifacts | Identical to prior independently rebuilt artifacts |
+| Standalone source/privacy screen | Pass |
+
+The reference selection excludes named benchmark/live research cases and the
+expensive dense execution sweep. Its five midpoint tests exercise the default
+provider, unchanged normal output/instructions, state preservation, refresh mode
+transitions, expiry, original-state executions and retained wider-crossing error
+regressions. It includes 144 routed successes and 96 atomic rollbacks via a
+**test-only** final guard, plus 32 timestamp-only +21-second successes and 16
+expired controls. This does not test Titan's actual production guard.
+
+The 40 shared checks cover construction/allocation, zero-input price, monotone
+output/price and mean-value theorem. The old-VM execution and shared speed cases
+are explicitly excluded; compatible actual-program replays and the native
+benchmark supply separate evidence. Nothing skipped is counted as passed.
+
+The dense 188,680 captured executions and controlled 52,136-execution / 2,704,632
+quote study were run in the source workspace, not rerun after a byte-identical
+export. Original captured books have no overquotes/failures; the controlled
+study retains 11,444 overquotes in wider crossings. These are not a production
+failure probability or a universal five-bp safety bound. Details and commands:
+[MIDPOINT_VALIDATION.md](MIDPOINT_VALIDATION.md),
+[MIDPOINT_MEASUREMENTS.json](MIDPOINT_MEASUREMENTS.json).
+
+Cargo dependency/build caches were reused; the exported package was recompiled
+from this checkout, as recorded in build logs. This is not a clean-machine
+installation. Program source is unchanged, so no new SBF rebuild is claimed.
+The existing separately rebuilt router/guard match the source-workspace files:
+
+- Router: `b8997ff5ef34d8fa27a1e71fdfa1b134a6938788de920fa0e1d19b1f7d8652ba`
+- Test-only guard: `9f5383d9036a493f3132dfdb4090ebd479f5237f7c5d198d6fd9215436bb090c`
+
+## Current standalone performance
+
+100 batches of 10,000 complete quotes and 100 complete cached refreshes per case.
+Quote percentiles describe batch means, not individual-call tails. Local Mac
+measurements are not production latency guarantees; normal-book timing includes
+an outlier batch above 1 µs while all p99 batch means remain below 1 µs.
+
+| Snapshot | Quote median / p99 / max (µs) | Refresh median / p99 (ms) |
+| --- | ---: | ---: |
+| Normal SOL3L | 0.110 / 0.415 / 1.264 | 1.302 / 2.095 |
+| Locked SOL3L | 0.120 / 0.131 / 0.133 | 1.388 / 1.521 |
+| Crossed SOL3L | 0.120 / 0.127 / 0.129 | 1.827 / 2.031 |
+| Crossed SOL2S | 0.122 / 0.143 / 0.145 | 1.779 / 2.035 |
+
+## Commands run
+
+Run from the standalone package root; the shared tests were served by
+`tests/support/fixture_rpc.py` using the eight cases documented in
+[MIDPOINT_VALIDATION.md](MIDPOINT_VALIDATION.md).
+
+```sh
+cargo +1.96.0 test --profile release-debug --locked --features reference-simulation --lib --test ocelot --test ocelot_native --test ocelot_phoenix --test ocelot_state --test ocelot_replay --test ocelot_spline --test ocelot_slippage --test ocelot_curve --test ocelot_midpoint --test your_venue_creation -- --include-ignored --skip benchmark_ --skip fresh_spline_comparison --skip production_execution_sweep
+cargo +1.96.0 test --profile release-debug --locked --lib --test ocelot --test ocelot_native --test ocelot_phoenix --test ocelot_state --test ocelot_spline --test ocelot_slippage --test ocelot_curve --test ocelot_midpoint --test your_venue_creation
+cargo +1.96.0 clippy --locked --features reference-simulation --lib --test ocelot_midpoint --test ocelot_curve --test ocelot_slippage --example capture_locked -- -D warnings
+cargo +1.96.0 clippy --locked --lib --test ocelot_midpoint -- -D warnings
+cargo +1.96.0 fmt --check
+cargo +1.96.0 test --locked --manifest-path program-template/Cargo.toml -p titan-v3-venue-template --lib --test venue_parity
+cargo +1.96.0 test --profile release-debug --locked --test your_venue --no-run --message-format=json
+cargo +1.96.0 test --release --locked --test ocelot_midpoint benchmark_midpoint_quote_and_refresh -- --ignored --nocapture
+# Run the built shared test binary against each read-only fixture RPC:
+SOLANA_RPC_URL=http://127.0.0.1:PORT OCELOT_TEST_MARKET=MARKET your_venue_test_binary --skip bound_simulation --skip random_samples --skip quoting_speed --nocapture
+```
+
+Titan review must accept the approximation/error policy and verify production
+Clock delivery, range discovery, final user minimum and runtime/ABI integration
+before activation. No routing activation, program upgrade or ANT validation is
+implied by this export. The prior evidence below is retained as history.
+
+## Historical standalone curve export validation, 12 November 2026
 
 The checks below passed from the standalone checkout exported from source
 `b597dddf7c5ea8bd053e7cf8507dff8ee478e84e`. Runtime and test sources, Cargo manifests/locks and all four

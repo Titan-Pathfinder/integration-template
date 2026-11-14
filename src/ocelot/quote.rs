@@ -1,8 +1,8 @@
 //! Native issuer arithmetic. No VM, RPC, account decoding or heap allocation.
 //!
-//! A provider supplies an exact fill or a conservative execution model whose
-//! final issuer output is no greater than execution from the same cached state.
-//! Raw FIFO/spline geometry alone is insufficient. See NATIVE_QUOTING.md.
+//! Normal-book providers supply a conservative execution model. The explicitly
+//! selected midpoint fallback is approximate and can overquote stressed crossed
+//! states despite its output discount. See MIDPOINT_VALIDATION.md.
 use super::{
     State,
     codec::{Result, invalid},
@@ -17,13 +17,19 @@ pub trait PhoenixQuoteFactory: Send + Sync {
 /// Immutable native matcher bound to exactly one State by its factory.
 /// Implementations must be allocation-free and must not simulate or do I/O.
 pub trait PhoenixQuoter: Send + Sync {
+    /// Enables the additional five-bp final-output discount for the explicit
+    /// midpoint policy. This does not certify executable output or capacity.
+    fn is_midpoint_approximation(&self) -> bool {
+        false
+    }
+
     /// Model the full-fill IOC, including fees, funding, maker/taker risk,
     /// uncross reserves and collateral movements. Conservative providers must
     /// bound final issuer output, not merely individual book prices.
     /// Reject partial fills and unavailable Phoenix/Ember deposits/withdrawals.
     fn quote(&self, order: &Order) -> Result<Fill>;
 
-    /// A prepared lower bound on this provider's issuer output, with a matching
+    /// A prepared lower bound on this provider's MODELED issuer output, with a matching
     /// marginal price. Providers without a curve remain usable by the raw issuer
     /// kernel, but cannot publish discontinuous quotes through Titan's interface.
     fn curve(&self, _mint: bool) -> Option<&super::curve::Curve> {
